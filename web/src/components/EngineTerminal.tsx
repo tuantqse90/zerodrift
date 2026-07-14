@@ -9,9 +9,17 @@ interface StatusEvent {
   kind: "fill" | "state" | "info";
   text: string;
 }
+export interface HistoryPoint {
+  t: number;
+  vol: number;
+  fees: number;
+  funding: number;
+  net: number;
+}
 export interface EngineStatus {
   generatedAt: string;
   events: StatusEvent[];
+  history?: HistoryPoint[];
   mode: string;
   state: string;
   marketName: string;

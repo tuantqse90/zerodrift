@@ -1072,3 +1072,13 @@ footer {
 .est-cell .v.warn { color: hsl(var(--warning)); }
 .est-cell .k { font-size: 9.5px; letter-spacing: 0.12em; color: hsl(var(--muted-foreground)); margin-top: 6px; }
 .est-note { margin-top: 14px; font-size: 12px; color: hsl(var(--muted-foreground)); line-height: 1.6; max-width: 90ch; }
+
+/* ── history sparkline ──────────────────────────────────────────────────── */
+.spark { margin-top: 12px; }
+.spark-head { display: flex; justify-content: space-between; font-size: 9.5px; letter-spacing: 0.1em; color: hsl(var(--muted-foreground)); margin-bottom: 4px; }
+.spark-head .spark-span { color: hsl(var(--muted-foreground) / 0.7); }
+.spark-svg { width: 100%; display: block; }
+.spark-foot { display: flex; justify-content: space-between; font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+.spark-foot .mint { color: hsl(var(--mint)); font-weight: 600; }
+.spark-foot .warn { color: hsl(var(--warning)); font-weight: 600; }
+.spark-empty { font-size: 10.5px; color: hsl(var(--muted-foreground)); padding: 14px 0 4px; text-align: center; }

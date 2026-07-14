@@ -6,6 +6,7 @@ import { EngineTerminal, useEngineStatus } from "./components/EngineTerminal";
 import { EpochHistory } from "./components/EpochHistory";
 import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
+import { HistorySpark } from "./components/HistorySpark";
 import { PriceChart, useCandles } from "./components/PriceChart";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
@@ -328,6 +329,9 @@ export default function App() {
                     {engine.fundingAprPct.toFixed(1)}% APR
                   </span>
                 </div>
+                {engine.history && engine.history.length > 1 && (
+                  <HistorySpark history={engine.history} />
+                )}
                 <div className="foot">
                   Same engine ships as a headless bot — paper by default, live with your keys. Volume here is the
                   bot's own session, not yours.

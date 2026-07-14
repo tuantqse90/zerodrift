@@ -24,7 +24,7 @@ import { PnlLedger } from "./pnl";
 import { closeEpochOnChain, openEpochOnChain } from "./registry";
 import { buySpotMon, sellSpotMon, spotPriceUsd } from "./spot";
 import { loadState, saveState, transition } from "./state";
-import { pushEvent, writeStatus } from "./status";
+import { pushEvent, recordHistory, writeStatus } from "./status";
 
 const MODE = CFG.live ? "LIVE" : "PAPER";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -100,6 +100,14 @@ async function main(): Promise<void> {
   );
 
   if (CFG.unwind && state.state !== "CLOSED") transition(state, "UNWINDING", "HEDGER_UNWIND=true at boot");
+
+  // Paper mode holds the perp position in memory only, so a restart lands with a
+  // durable "hedged" state but a flat executor. Re-open the short from SPOT_FILLED
+  // instead of tripping the delta guard. (Live mode rebuilds the position from the
+  // Perpl snapshot, so this only affects paper.)
+  if (!CFG.live && (state.state === "HEDGED" || state.state === "CHURNING" || state.state === "REBALANCING")) {
+    transition(state, "SPOT_FILLED", "paper restart — re-establishing short from durable spot state");
+  }
 
   let lastBookAt = Date.now();
   let takerSpentToday = 0;
@@ -336,6 +344,12 @@ async function main(): Promise<void> {
           pointsBoostX: market.pointsBoostBps / 10_000,
         },
       });
+      recordHistory(
+        Date.now(),
+        pnl.perpVolumeUsd,
+        pnl.makerFeesUsd + pnl.takerFeesUsd,
+        pnl.fundingUsd,
+      );
 
       // ── periodic digest ──────────────────────────────────────────────────
       if (Date.now() - lastDigest > CFG.digestMs) {
