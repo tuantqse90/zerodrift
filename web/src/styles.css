@@ -1370,3 +1370,55 @@ footer {
   .tape-row:first-child { animation: tapeIn 0.4s ease-out; }
   @keyframes tapeIn { from { background: hsl(var(--primary) / 0.12); } }
 }
+
+/* ══ NAV — NullTerminal-style app menu ════════════════════════════════════ */
+.app .topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px 12px 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+}
+.app .topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  padding-right: 10px;
+}
+.app .topbar .brand:hover { text-decoration: none; }
+.brand-mark { border-radius: 7px; display: block; }
+.brand-name { font-weight: 700; font-size: 18px; letter-spacing: -0.015em; color: hsl(var(--foreground)); }
+.brand-name .zero { color: hsl(var(--primary)); }
+.brand-by { font-size: 10.5px; color: hsl(var(--muted-foreground)); align-self: flex-end; padding-bottom: 3px; }
+
+.nav-menu { display: flex; align-items: center; gap: 2px; }
+.nav-item {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  padding: 7px 13px;
+  border-radius: 9px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-item:hover { color: hsl(var(--foreground)); background: hsl(var(--secondary) / 0.5); text-decoration: none; }
+.nav-item.active { color: hsl(var(--foreground)); background: hsl(var(--secondary)); }
+.nav-item .ext { color: hsl(var(--muted-foreground)); font-size: 11px; margin-left: 1px; }
+
+.nav-status { display: flex; align-items: center; gap: 15px; }
+.sdot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+.sdot i { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--muted-foreground) / 0.45); flex-shrink: 0; }
+.sdot.on { color: hsl(var(--foreground) / 0.85); }
+.sdot.on i { background: hsl(var(--mint)); box-shadow: 0 0 7px hsl(var(--mint) / 0.6); }
+.sdot.reconn { color: hsl(var(--warning)); }
+.sdot.reconn i { background: hsl(var(--warning)); box-shadow: 0 0 7px hsl(var(--warning) / 0.6); animation: reconnPulse 1s ease-in-out infinite; }
+
+@media (max-width: 760px) {
+  .brand-by { display: none; }
+  .hide-sm { display: none; }
+  .nav-status .sdot span:not(.dot) { }
+  .app .topbar { flex-wrap: wrap; gap: 8px 4px; }
+}

@@ -168,37 +168,51 @@ export default function App() {
   return (
     <div className="app">
       <nav className="topbar">
-        <div className="brand">
-          <span>
+        <a className="brand" href="#/" aria-label="ZeroDrift home">
+          <img src="/icon.svg" alt="" width="26" height="26" className="brand-mark" />
+          <span className="brand-name">
             <span className="zero">Zero</span>Drift
           </span>
-          <span className="by">
-            by{" "}
-            <a href="https://nullterminal.xyz" target="_blank" rel="noreferrer">
-              NullTerminal
-            </a>
-          </span>
-        </div>
-        <span className="tagline">Delta-neutral Perpl points farming — hold MON, short the perp, farm the volume.</span>
-        <span className="spacer" />
-        <a className="guide-link" href="#/guide">
-          How it works ↗
+          <span className="brand-by">by NullTerminal</span>
         </a>
-        <div className="nav-right">
+
+        <div className="nav-menu" role="navigation">
+          <a className="nav-item active" href="#/">
+            Terminal
+          </a>
+          <a className="nav-item" href="#/guide">
+            Guide
+          </a>
+          <a
+            className="nav-item"
+            href="https://monadscan.com/address/0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Contract <span className="ext">↗</span>
+          </a>
+          <a className="nav-item hide-sm" href="https://perpl.xyz" target="_blank" rel="noreferrer">
+            Perpl <span className="ext">↗</span>
+          </a>
+        </div>
+
+        <span className="spacer" />
+
+        <div className="nav-status">
           <span
-            className={`live-dot ${feedState === "live" ? "on" : feedState === "reconnecting" ? "reconn" : ""}`}
+            className={`sdot ${feedState === "live" ? "on" : feedState === "reconnecting" ? "reconn" : ""}`}
             title={`Perpl feed: ${feedState}`}
           >
             <i />
-            {feedState === "reconnecting" ? "RECONNECTING" : "PERPL"}
+            {feedState === "reconnecting" ? "RECONNECTING" : "Perpl"}
           </span>
-          <span className={`live-dot ${blockNumber ? "on" : ""}`}>
+          <span className={`sdot ${blockNumber ? "on" : ""}`} title="Monad chain">
             <i />
-            MONAD
+            Monad
           </span>
-          <span className={`live-dot ${engine ? "on" : ""}`}>
+          <span className={`sdot ${engine ? "on" : ""}`} title="Hedging engine">
             <i />
-            ENGINE
+            Engine
           </span>
         </div>
       </nav>
