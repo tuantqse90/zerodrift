@@ -105,7 +105,9 @@ async function main(): Promise<void> {
   let rebalanceRoute: "perp" | "spot" | null = null;
   const fillLog: FillEvent[] = [];
   exec.onFill((f) => {
-    pnl.recordFill(f, CFG.live ? "live" : "paper");
+    const fb = feed.getBook();
+    const fillMid = fb ? (fb.bids[0].px + fb.asks[0].px) / 2 : undefined;
+    pnl.recordFill(f, CFG.live ? "live" : "paper", fillMid);
     fillLog.push(f);
     hedgeWorker?.handleFill(f);
     rebalanceWorker?.handleFill(f);
@@ -479,6 +481,11 @@ async function main(): Promise<void> {
         trendPaused,
         boostedVolumeUsd: Number((pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000)).toFixed(2)),
         netCostUsd: Number((pnl.makerFeesUsd + pnl.takerFeesUsd + pnl.gasUsd - pnl.fundingUsd).toFixed(4)),
+        // Spread captured vs mid, and the net PnL that credits it (+ = profit).
+        spreadCaptureUsd: Number(pnl.spreadCaptureUsd.toFixed(4)),
+        netPnlUsd: Number(
+          (pnl.spreadCaptureUsd + pnl.fundingUsd - pnl.makerFeesUsd - pnl.takerFeesUsd - pnl.gasUsd).toFixed(4),
+        ),
         costPer1kBoostedUsd:
           pnl.perpVolumeUsd > 0
             ? Number(

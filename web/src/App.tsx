@@ -536,6 +536,22 @@ export default function App() {
                       : "—"}
                   </span>
                 </div>
+                {engine.spreadCaptureUsd != null && (
+                  <div className="kv">
+                    <span className="k">SPREAD CAPTURED</span>
+                    <span className={`mono ${engine.spreadCaptureUsd > 0 ? "v-mint" : ""}`}>
+                      {engine.spreadCaptureUsd >= 0 ? "+" : "−"}${Math.abs(engine.spreadCaptureUsd).toFixed(3)}
+                    </span>
+                  </div>
+                )}
+                {engine.netPnlUsd != null && (
+                  <div className="kv">
+                    <span className="k">NET PnL</span>
+                    <span className={`mono ${engine.netPnlUsd >= 0 ? "v-mint" : "v-warn"}`}>
+                      {engine.netPnlUsd >= 0 ? "+" : "−"}${Math.abs(engine.netPnlUsd).toFixed(3)}
+                    </span>
+                  </div>
+                )}
                 {engine.history && engine.history.length > 1 && (
                   <HistorySpark history={engine.history} />
                 )}

@@ -53,6 +53,10 @@ export interface EngineStatus {
   boostedVolumeUsd?: number;
   netCostUsd?: number;
   costPer1kBoostedUsd?: number;
+  /** Gross spread captured vs mid (USD). */
+  spreadCaptureUsd?: number;
+  /** Net PnL crediting spread capture: spread + funding − fees − gas (+ = profit). */
+  netPnlUsd?: number;
   config?: {
     leverageX: number;
     churnMin: number;

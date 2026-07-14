@@ -1,7 +1,7 @@
 // Unit tests for the ISO-week bucketing used by the weekly-volume (points) tally.
 
 import { describe, expect, test } from "bun:test";
-import { isoWeek } from "../../src/hedger/pnl";
+import { fillSpreadUsd, isoWeek } from "../../src/hedger/pnl";
 
 describe("isoWeek", () => {
   test("formats as YYYY-Www", () => {
@@ -21,5 +21,29 @@ describe("isoWeek", () => {
     const nextMon = new Date(Date.UTC(2026, 6, 20));
     expect(isoWeek(mon)).toBe(isoWeek(sun));
     expect(isoWeek(nextMon)).not.toBe(isoWeek(mon));
+  });
+});
+
+describe("fillSpreadUsd (spread capture vs mid)", () => {
+  test("maker banks the distance from mid", () => {
+    // Buy 100 @ 0.0224 while mid is 0.0225 → captured 0.0001·100 = $0.01.
+    expect(fillSpreadUsd(0.0224, 100, true, 0.0225)).toBeCloseTo(0.01, 9);
+    // Sell above mid captures the same way (absolute distance).
+    expect(fillSpreadUsd(0.0226, 100, true, 0.0225)).toBeCloseTo(0.01, 9);
+  });
+
+  test("taker pays the distance (negative)", () => {
+    expect(fillSpreadUsd(0.0227, 100, false, 0.0225)).toBeCloseTo(-0.02, 9);
+  });
+
+  test("no mid ⇒ zero (can't attribute edge)", () => {
+    expect(fillSpreadUsd(0.0224, 100, true)).toBe(0);
+    expect(fillSpreadUsd(0.0224, 100, true, 0)).toBe(0);
+  });
+
+  test("a wider maker quote captures more than a tight one (AS vs churn)", () => {
+    const wide = fillSpreadUsd(0.02236, 100, true, 0.0225); // ~6bps off mid (AS)
+    const tight = fillSpreadUsd(0.022489, 100, true, 0.0225); // ~0.5bps off mid (churn touch)
+    expect(wide).toBeGreaterThan(tight);
   });
 });

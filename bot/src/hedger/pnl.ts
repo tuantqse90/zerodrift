@@ -21,6 +21,15 @@ function append(file: string, row: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Edge captured by one fill vs the mid at fill time: a MAKER rests away from mid, so
+ * a fill banks that distance (+); a TAKER crosses, paying it (−). Returns USD.
+ */
+export function fillSpreadUsd(px: number, sz: number, maker: boolean, midAtFill?: number): number {
+  if (midAtFill == null || !(midAtFill > 0)) return 0;
+  return (maker ? 1 : -1) * Math.abs(px - midAtFill) * sz;
+}
+
 export function isoWeek(d = new Date()): string {
   // ISO-8601 week: Thursday determines the year.
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -38,6 +47,13 @@ export class PnlLedger {
   gasUsd = 0;
   perpVolumeUsd = 0;
   fillCount = 0;
+  /**
+   * Gross spread captured vs the mid at fill: Σ |fillPx − mid|·sz over MAKER fills
+   * (a maker rests away from mid, so a fill banks that distance) minus the same for
+   * TAKER fills (a taker crosses, paying it). Directional-move independent — the
+   * clean measure of the quoting edge, unlike raw realized PnL.
+   */
+  spreadCaptureUsd = 0;
   private weekly = new Map<string, number>();
 
   constructor() {
@@ -51,6 +67,7 @@ export class PnlLedger {
             this.perpVolumeUsd += r.notionalUsd;
             this.weekly.set(r.week, (this.weekly.get(r.week) ?? 0) + r.notionalUsd);
             this.fillCount += 1;
+            this.spreadCaptureUsd += r.spreadUsd ?? 0;
             if (r.maker) this.makerFeesUsd += r.feeUsd ?? 0;
             else this.takerFeesUsd += r.feeUsd ?? 0;
           }
@@ -63,11 +80,13 @@ export class PnlLedger {
     }
   }
 
-  recordFill(f: FillEvent, mode: "paper" | "live"): void {
+  recordFill(f: FillEvent, mode: "paper" | "live", midAtFill?: number): void {
     const notionalUsd = f.px * f.sz;
     const week = isoWeek();
+    const spreadUsd = fillSpreadUsd(f.px, f.sz, f.maker, midAtFill);
     this.perpVolumeUsd += notionalUsd;
     this.fillCount += 1;
+    this.spreadCaptureUsd += spreadUsd;
     this.weekly.set(week, (this.weekly.get(week) ?? 0) + notionalUsd);
     if (f.maker) this.makerFeesUsd += f.feeUsd;
     else this.takerFeesUsd += f.feeUsd;
@@ -81,6 +100,8 @@ export class PnlLedger {
       notionalUsd,
       feeUsd: f.feeUsd,
       maker: f.maker,
+      midAtFill,
+      spreadUsd,
     });
     append(WEEKLY, { week, weekVolumeUsd: this.weekly.get(week) });
   }
@@ -110,6 +131,7 @@ export class PnlLedger {
       takerFeesUsd: this.takerFeesUsd,
       fundingUsd: this.fundingUsd,
       gasUsd: this.gasUsd,
+      spreadCaptureUsd: this.spreadCaptureUsd,
       perpVolumeUsd: this.perpVolumeUsd,
       fillCount: this.fillCount,
       week: isoWeek(),
