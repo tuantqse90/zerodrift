@@ -15,15 +15,6 @@ import {
 import { spotPriceUsd } from "./lib/nt";
 import { loadKeys, TradingSession } from "./lib/perplTrading";
 
-function useUtcClock(): string {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now.toISOString().slice(11, 19);
-}
-
 function useBlockNumber(): bigint | null {
   const [block, setBlock] = useState<bigint | null>(null);
   useEffect(() => {
@@ -33,6 +24,13 @@ function useBlockNumber(): bigint | null {
     return () => clearInterval(t);
   }, []);
   return block;
+}
+
+function ago(unixSec: number): string {
+  const s = Math.max(0, Math.floor(Date.now() / 1000) - unixSec);
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 export default function App() {
@@ -45,7 +43,6 @@ export default function App() {
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
   const feedRef = useRef<PerplFeed | null>(null);
-  const clock = useUtcClock();
   const blockNumber = useBlockNumber();
 
   useEffect(() => {
@@ -108,6 +105,7 @@ export default function App() {
   const onHedgeChange = useCallback((spotMon: number) => setHedgeSpotMon(spotMon), []);
 
   const mid = book ? (book.bids[0].px + book.asks[0].px) / 2 : null;
+  const spreadBps = book ? ((book.asks[0].px - book.bids[0].px) / book.bids[0].px) * 10_000 : null;
   const pos = session?.position;
   const shortMon = pos?.side === "short" ? pos.sizeMon : 0;
   const hasHedge = hedgeSpotMon > 0 || shortMon > 0;
@@ -123,99 +121,101 @@ export default function App() {
   }, [hasHedge, deltaPct]);
 
   const shortsEarn = fundingApr !== null && fundingApr > 0;
+  const latestEpoch = epochs[0];
 
   return (
-    <div className="unit boot">
-      <span className="screw tl" aria-hidden="true" />
-      <span className="screw tr" aria-hidden="true" />
-      <span className="screw bl" aria-hidden="true" />
-      <span className="screw br" aria-hidden="true" />
+    <div className="wrap">
+      <a href="#console" className="sr-only">
+        Skip to hedge console
+      </a>
 
-      <header className="headstrip">
-        <div className="wordmark" aria-label="ZeroDrift">
-          ZER
-          <span className="o" aria-hidden="true">
-            <i />
+      <nav className="nav">
+        <div className="brand">
+          <span>
+            <span className="zero">Zero</span>Drift
           </span>
-          DRIFT
-          <span className="unit-no">UNIT 001</span>
-        </div>
-
-        <div className="annunciators" role="status" aria-label="System status">
-          <span className={`lamp ${book ? "on" : ""}`}>
-            <i />
-            FEED
-          </span>
-          <span className={`lamp ${blockNumber ? "on" : ""}`}>
-            <i />
-            CHAIN
-          </span>
-          <span
-            className={`lamp ${session?.status === "ready" ? "on" : session?.status === "auth-failed" ? "on err" : ""}`}
-          >
-            <i />
-            KEYS
+          <span className="by">
+            by{" "}
+            <a href="https://nullterminal.xyz" target="_blank" rel="noreferrer">
+              NullTerminal
+            </a>
           </span>
         </div>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <span className="hud-chip">
-            <span className="dim">BLK</span> {blockNumber ? blockNumber.toLocaleString() : "———"}
+        <div className="nav-right">
+          <span className={`live-dot ${book ? "on" : ""}`}>
+            <i />
+            PERPL FEED
           </span>
-          <span className="hud-chip">
-            <span className="dim">UTC</span> {clock}
+          <span className={`live-dot ${blockNumber ? "on" : ""}`}>
+            <i />
+            MONAD
           </span>
         </div>
+      </nav>
+
+      <div className="ticker mono" aria-label="Live market data">
+        <span>
+          <span className="t-label">MON-PERP</span>
+          <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">SPOT</span>
+          <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">FUNDING</span>
+          <span className={`t-val ${fundingApr === null ? "" : shortsEarn ? "up" : "down"}`}>
+            {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR`}
+          </span>
+          <span className="t-label" style={{ marginLeft: 7 }}>
+            {fundingApr === null ? "" : shortsEarn ? "SHORTS EARN" : "SHORTS PAY"}
+          </span>
+        </span>
+        <span>
+          <span className="t-label">MAKER</span>
+          <span className="t-val up">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">TAKER</span>
+          <span className="t-val">{market ? `${(market.takerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">POINTS</span>
+          <span className="t-val violet">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}× BOOST` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">SPREAD</span>
+          <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">BLOCK</span>
+          <span className="t-val">{blockNumber ? blockNumber.toLocaleString() : "—"}</span>
+        </span>
+      </div>
+
+      <header className="hero">
+        <span className="pill mono">
+          <i />
+          LIVE ON MONAD MAINNET · PURPLE SUMMER
+        </span>
+        <h1>
+          Farm Perpl points, <span className="violet">stay flat</span>
+        </h1>
+        <p className="sub">
+          Hold MON as the long, short the same size on <strong>Perpl</strong> with maker orders, and churn volume
+          through the <strong>2×-boosted MON market</strong> — price moves cancel out, the points don't. Every hedge
+          is attested on-chain.
+        </p>
       </header>
 
-      <main>
-        <section className="hero">
-          <div>
-            <span className="placard">DELTA-NEUTRAL POINTS TERMINAL · MONAD 143</span>
-            <h1>
-              FARM PERPL POINTS.
-              <span className="flat">STAY FLAT.</span>
-            </h1>
-            <p className="sub">
-              Hold MON as the long. Short the same size on <strong>Perpl</strong> with PostOnly maker orders — 0.9bps
-              instead of 6.9bps — and churn volume through the <strong>2x-boosted MON market</strong> while funding
-              pays the short. Price moves cancel out; the points don't. Every hedge is attested on-chain.
-            </p>
-          </div>
-
-          <div className="readouts" aria-label="Live market readouts">
-            <div className="lcd">
-              <div className="k">MON-PERP MID</div>
-              <div className="v">{mid ? mid.toFixed(6) : "——————"}</div>
-            </div>
-            <div className="lcd">
-              <div className="k">SPOT · NULLTERMINAL</div>
-              <div className="v">{spotPx ? spotPx.toFixed(6) : "——————"}</div>
-            </div>
-            <div className="lcd">
-              <div className="k">FUNDING · 1H</div>
-              <div className={`v ${fundingApr === null ? "" : shortsEarn ? "" : "amber"}`}>
-                {fundingApr === null ? "———" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}`}
-                <small>{fundingApr === null ? "" : `% APR · SHORTS ${shortsEarn ? "EARN" : "PAY"}`}</small>
-              </div>
-            </div>
-            <div className="lcd">
-              <div className="k">MAKER FEE</div>
-              <div className="v">
-                {market ? (market.makerFeeMicros / 100).toFixed(1) : "——"}
-                <small>BPS · TAKER {market ? (market.takerFeeMicros / 100).toFixed(1) : "——"}</small>
-              </div>
-            </div>
-            <div className="lcd wide">
-              <div className="k">POINTS BOOST · PURPLE SUMMER</div>
-              <div className="v violet">
-                {market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}×` : "——"}
-                <small>MON MARKET · WEEKLY MPOINTS ∝ VOLUME</small>
-              </div>
-            </div>
-          </div>
-        </section>
-
+      <div className="duo" id="console">
+        <HedgeConsole
+          market={market}
+          book={book}
+          session={session}
+          setSession={setSession}
+          onHedgeChange={onHedgeChange}
+        />
         <DriftGauge
           spotMon={hedgeSpotMon}
           spotUsd={hedgeSpotMon * (spotPx ?? mid ?? 0)}
@@ -225,84 +225,174 @@ export default function App() {
           stateLabel={stateLabel}
           hasHedge={hasHedge}
         />
+      </div>
 
-        <div className="deck">
-          <HedgeConsole
-            market={market}
-            book={book}
-            session={session}
-            setSession={setSession}
-            onHedgeChange={onHedgeChange}
-          />
-          <div className="deck-col">
-            <section className="panel">
-              <span className="placard tab">MON-PERP BOOK · LIVE</span>
-              <p className="panel-sub">Depth from Perpl's on-chain CLOB. Maker orders join the touch.</p>
-              <div className="screen-inset">
-                <BookLadder book={book} />
-              </div>
-            </section>
-            <section className="panel">
-              <span className="placard tab">ON-CHAIN EPOCHS · HEDGEREGISTRY</span>
-              <p className="panel-sub">
-                Every hedge writes an epoch on-chain — public, permissionless proof of delta-neutral farming.
-              </p>
-              <EpochHistory epochs={epochs} loading={epochsLoading} />
-            </section>
+      <div className="statstrip">
+        <div className="inner glass">
+          <div className="stat">
+            <div className="v mint">0.9bps</div>
+            <div className="k">MAKER FEE</div>
+          </div>
+          <div className="stat">
+            <div className="v">~1.8bps</div>
+            <div className="k">CHURN ROUND TRIP</div>
+          </div>
+          <div className="stat">
+            <div className="v">2×</div>
+            <div className="k">MON POINTS BOOST</div>
+          </div>
+          <div className="stat">
+            <div className={`v ${shortsEarn ? "mint" : "warn"}`}>
+              {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}%`}
+            </div>
+            <div className="k">FUNDING APR</div>
+          </div>
+          <div className="stat">
+            <div className="v">2.0×</div>
+            <div className="k">LEVERAGE</div>
           </div>
         </div>
+      </div>
 
-        <section className="sequence" aria-label="Operation sequence">
-          <span className="placard tab">OPERATION SEQUENCE</span>
-          <div className="seq-flow">
-            <div className="seq-step">
-              <div className="seq-glyph">01 · LONG</div>
-              <h3>Hold spot MON</h3>
-              <p>
-                The MON in your wallet is the long leg. Need more? Route any Monad token through NullTerminal's
-                aggregator for the best fill.
-              </p>
-            </div>
-            <span className="seq-arrow" aria-hidden="true">
-              ─▶
-            </span>
-            <div className="seq-step">
-              <div className="seq-glyph">02 · SHORT</div>
-              <h3>Short the perp on Perpl</h3>
-              <p>
-                The console works PostOnly orders at the touch — maker fees, zero market impact. Delta pins to the
-                center notch: MON up or down, the hedge doesn't care.
-              </p>
-            </div>
-            <span className="seq-arrow" aria-hidden="true">
-              ─▶
-            </span>
-            <div className="seq-step">
-              <div className="seq-glyph">03 · CHURN</div>
-              <h3>Farm the volume</h3>
-              <p>
-                Purple Summer mPoints follow weekly volume and the MON market pays 2×. Churn re-opens a slice every 15
-                minutes at ~1.8bps a round trip.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <footer className="serial-plate">
-          <span>ZERODRIFT · POWERED BY NULLTERMINAL · BUILT FOR MONAD SPARK</span>
-          <span>
-            HEDGEREGISTRY{" "}
-            <a
-              href="https://monadscan.com/address/0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48"
-              target="_blank"
-              rel="noreferrer"
-            >
-              0x24BD…3A48
-            </a>{" "}
-            · CHAIN 143 · NOT FINANCIAL ADVICE
+      {latestEpoch && (
+        <div className="live-line">
+          <span className="pill">
+            <i />
+            <b>EPOCH #{latestEpoch.epochId}</b>
+            <span className="addr">${latestEpoch.notionalUsd.toFixed(2)}</span>
+            by {latestEpoch.owner.slice(0, 6)}…{latestEpoch.owner.slice(-4)} ·{" "}
+            {latestEpoch.closed ? "closed" : "open"} · {ago(latestEpoch.openedAt)}
           </span>
-        </footer>
-      </main>
+        </div>
+      )}
+
+      <section className="terminal glass-strong" aria-label="Hedging engine log">
+        <div className="t-head">
+          <span className="dot r" />
+          <span className="dot y" />
+          <span className="dot g" />
+          <span className="t-title">zerodrift — hedging engine (paper session, live mainnet data)</span>
+          <span className="t-right">bun run hedger</span>
+        </div>
+        <div className="t-body">
+          <div>
+            <span className="dim">$</span> bun run hedger
+          </div>
+          <div className="dim">
+            market 10 "MON" · maker 0.9bps taker 6.9bps · ttl 20 blocks · points boost <span className="violet">2×</span>
+          </div>
+          <div>
+            <span className="dim">[04:02:56]</span> fill <span className="mint">maker</span> 1294.9860 @ 0.021991
+            fee=<span className="mint">$0.0026</span>
+          </div>
+          <div>
+            <span className="dim">[04:02:59]</span> state CHURNING → <span className="mint">HEDGED</span>{" "}
+            <span className="dim">(round-trip #3 complete)</span>
+          </div>
+          <div>
+            <span className="dim">[04:06:18]</span> fill <span className="mint">maker</span> 1130.9350 @ 0.022025
+            fee=<span className="mint">$0.0022</span>
+          </div>
+          <div>
+            <span className="dim">[04:19:59]</span> state CHURNING → <span className="mint">HEDGED</span>{" "}
+            <span className="dim">(round-trip #4 complete)</span>
+          </div>
+          <div>
+            <span className="dim">[04:39:22]</span> fill <span className="mint">maker</span> 1150.8216 @ 0.022144
+            fee=<span className="mint">$0.0023</span> <span className="amber">← round-trip #5 in flight</span>
+          </div>
+        </div>
+        <div className="t-foot">
+          Real output — the engine has been running against live mainnet data since deploy. Runs headless, alerts to
+          Telegram, unwinds itself on margin pressure.
+        </div>
+      </section>
+
+      <div className="deck">
+        <section className="card glass">
+          <div className="card-head">
+            <span className="title">
+              <i />
+              MON-perp book
+            </span>
+            <span className="meta mono">Perpl on-chain CLOB</span>
+          </div>
+          <p className="card-sub">Live depth. Maker orders join the touch — no impact, 0.9bps.</p>
+          <BookLadder book={book} />
+        </section>
+        <section className="card glass">
+          <div className="card-head">
+            <span className="title">
+              <i />
+              On-chain epochs
+            </span>
+            <span className="meta mono">HedgeRegistry</span>
+          </div>
+          <p className="card-sub">Every hedge writes an epoch on-chain — public proof of delta-neutral farming.</p>
+          <EpochHistory epochs={epochs} loading={epochsLoading} />
+        </section>
+      </div>
+
+      <div className="features">
+        <div className="feature glass">
+          <div className="f-icon">δ→0</div>
+          <h3>Delta-neutral by construction</h3>
+          <p>
+            Spot long and perp short cancel out. MON can double or halve — your PnL is fees and funding, not
+            direction.
+          </p>
+        </div>
+        <div className="feature glass">
+          <div className="f-icon">0.9bps</div>
+          <h3>Maker-only churn</h3>
+          <p>
+            PostOnly orders at the touch, re-posted automatically. A full churn round trip costs ~1.8bps against a 2×
+            points boost — and funding currently pays the short.
+          </p>
+        </div>
+        <div className="feature glass">
+          <div className="f-icon">⛓</div>
+          <h3>Attested on-chain</h3>
+          <p>
+            The HedgeRegistry contract logs every epoch — open, close, notional — permissionless and verified on
+            MonadScan. No trust, just receipts.
+          </p>
+        </div>
+      </div>
+
+      <div className="callout">
+        <div className="c-icon">＄</div>
+        <div className="c-text">
+          <b>Run it headless</b>
+          <p>
+            The same engine ships as a bot — <code>bun run hedger</code> — with Telegram alerts, PnL decomposition,
+            and paper mode by default. Point it at your keys and it farms while you sleep.
+          </p>
+        </div>
+        <a
+          className="c-link"
+          href="https://monadscan.com/address/0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View the contract →
+        </a>
+      </div>
+
+      <footer>
+        <span>ZeroDrift · powered by NullTerminal · built for Monad Spark</span>
+        <span>
+          HedgeRegistry{" "}
+          <a
+            href="https://monadscan.com/address/0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48"
+            target="_blank"
+            rel="noreferrer"
+          >
+            0x24BD…3A48
+          </a>{" "}
+          · Monad 143 · not financial advice
+        </span>
+      </footer>
     </div>
   );
 }

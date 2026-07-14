@@ -1,19 +1,12 @@
-// HedgeConsole — the interactive core. Three states: connect wallet → add Perpl
-// key → drive the hedge. The spot long is the MON you already hold; the console
-// shorts the same size on Perpl with PostOnly maker orders and keeps them working
-// while this tab is open. Every action is client-side: keys never leave the browser.
+// HedgeConsole — NT swap-card idiom. Three states: connect wallet → add Perpl
+// key → drive the hedge. Spot stays in the wallet; the short earns points on
+// Perpl. Keys live in this browser only and can never withdraw funds.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatEther, keccak256, toHex, type Address, type WalletClient } from "viem";
 import { connectWallet, monad, publicClient, REGISTRY_ABI, REGISTRY_ADDRESS } from "../lib/chain";
 import type { PerplBook, PerplMarketInfo } from "../lib/perplFeed";
-import {
-  clearKeys,
-  loadKeys,
-  saveKeys,
-  TradingSession,
-  type FillEvent,
-} from "../lib/perplTrading";
+import { clearKeys, loadKeys, saveKeys, TradingSession, type FillEvent } from "../lib/perplTrading";
 
 interface HedgeLocal {
   targetMon: number;
@@ -61,7 +54,6 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const churnSize = useRef(0);
   const lastChurnAt = useRef(Date.now());
 
-  // wallet MON balance poll
   useEffect(() => {
     if (!address) return;
     let live = true;
@@ -81,12 +73,10 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     };
   }, [address]);
 
-  // publish hedge state up for the gauge
   useEffect(() => {
     onHedgeChange(hedge ? hedge.targetMon : 0, hedge?.targetMon ?? 0, working !== "idle");
   }, [hedge, working, onHedgeChange]);
 
-  // session change → rerender
   useEffect(() => {
     if (!session) return;
     session.onChange = rerender;
@@ -101,8 +91,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     };
   }, [session, rerender]);
 
-  // ── maker keep-alive loop: while opening/closing, keep one PostOnly order
-  //    working at the touch; on lb expiry the order vanishes → re-place fresh.
+  // maker keep-alive: keep one PostOnly order working while opening/closing
   useEffect(() => {
     if (working === "idle" || !session || !book || !market) return;
     const target = hedge?.targetMon ?? 0;
@@ -118,24 +107,20 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
           setNote({ kind: "ok", text: `Hedged: ${shortMon.toFixed(1)} MON short at maker fees.` });
           return;
         }
-        if (session.openOrders.size === 0) {
-          session.placeMaker("short-open", b.asks[0].px, target - shortMon);
-        }
+        if (session.openOrders.size === 0) session.placeMaker("short-open", b.asks[0].px, target - shortMon);
       } else {
         if (shortMon <= 0.01) {
           setWorking("idle");
           setNote({ kind: "ok", text: "Perp leg closed. You're back to plain spot MON." });
           return;
         }
-        if (session.openOrders.size === 0) {
-          session.placeMaker("short-close", b.bids[0].px, shortMon);
-        }
+        if (session.openOrders.size === 0) session.placeMaker("short-close", b.bids[0].px, shortMon);
       }
     }, 4000);
     return () => clearInterval(t);
   }, [working, session, book, market, hedge]);
 
-  // ── churn loop (only while tab is open) ─────────────────────────────────
+  // churn loop (tab-open only)
   useEffect(() => {
     if (!churnOn || !session || !market) return;
     const t = setInterval(() => {
@@ -153,15 +138,16 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
         lastChurnAt.current = Date.now();
         session.placeMaker("short-close", b.bids[0].px, churnSize.current);
       } else if (session.openOrders.size === 0) {
-        // previous leg finished (filled or expired) — advance or re-arm
         if (churnPhase.current === "closing" && shortMon <= (hedge?.targetMon ?? 0) - churnSize.current * 0.9) {
           churnPhase.current = "reopening";
           session.placeMaker("short-open", b.asks[0].px, churnSize.current);
         } else if (churnPhase.current === "reopening" && shortMon >= (hedge?.targetMon ?? 0) * 0.99) {
           churnPhase.current = "idle";
-          setNote({ kind: "ok", text: `Churn round-trip done — +$${(churnSize.current * b.bids[0].px * 2).toFixed(0)} maker volume.` });
+          setNote({
+            kind: "ok",
+            text: `Churn round-trip done — +$${(churnSize.current * b.bids[0].px * 2).toFixed(0)} maker volume.`,
+          });
         } else {
-          // order expired unfilled — re-place the current leg
           const side = churnPhase.current === "closing" ? "short-close" : "short-open";
           const px = side === "short-close" ? b.bids[0].px : b.asks[0].px;
           session.placeMaker(side, px, churnSize.current);
@@ -209,7 +195,10 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       return;
     }
     if (size > monBalance) {
-      setNote({ kind: "err", text: `You hold ${monBalance.toFixed(1)} MON — the hedge can't be bigger than the spot leg.` });
+      setNote({
+        kind: "err",
+        text: `You hold ${monBalance.toFixed(1)} MON — the hedge can't be bigger than the spot leg.`,
+      });
       return;
     }
     const h: HedgeLocal = { targetMon: size, openedAt: Date.now(), epochId: null, fillOids: [] };
@@ -250,29 +239,60 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const keys = loadKeys();
   const pos = session?.position;
   const shortMon = pos?.side === "short" ? pos.sizeMon : 0;
+  const midPx = book ? (book.bids[0].px + book.asks[0].px) / 2 : 0;
 
   return (
-    <section className="panel">
-      <span className="placard tab">HEDGE CONSOLE</span>
-      <p className="panel-sub">
+    <section className="card glass-strong gradient-border">
+      <div className="card-head">
+        <span className="title">
+          <i />
+          Hedge
+        </span>
+        <span className="meta mono">{session?.status === "ready" ? "keys active" : "non-custodial"}</span>
+      </div>
+      <p className="card-sub">
         Short the MON you hold. Spot stays in your wallet; the short earns points on Perpl. Keys never leave this
-        browser, and API keys cannot withdraw funds by design.
+        browser and can't withdraw funds.
       </p>
 
       {!address ? (
         <>
-          <button className="btn primary block" onClick={doConnect}>
-            Connect wallet
+          <div className="fieldbox">
+            <div className="fb-label">SPOT LONG — YOU HOLD</div>
+            <div className="fb-row">
+              <span className="fb-main mono" style={{ color: "hsl(var(--muted-foreground) / .5)" }}>
+                0.0
+              </span>
+              <span className="fb-token">
+                <span className="dot" style={{ background: "hsl(var(--primary))" }} />
+                MON
+              </span>
+            </div>
+          </div>
+          <div className="fieldbox">
+            <div className="fb-label">PERP SHORT — YOU OPEN</div>
+            <div className="fb-row">
+              <span className="fb-main mono" style={{ color: "hsl(var(--muted-foreground) / .5)" }}>
+                0.0
+              </span>
+              <span className="fb-token">
+                <span className="dot" style={{ background: "hsl(var(--mint))" }} />
+                MON-PERP
+              </span>
+            </div>
+          </div>
+          <button className="btn block" onClick={doConnect}>
+            Connect Wallet
           </button>
           <div className="console-note">
-            Read-only without a wallet — the gauge, book, and registry above are live either way.
+            Read-only without a wallet — the gauge, book, and registry stay live either way.
           </div>
         </>
       ) : !keys || !session ? (
         <>
           <div className="kv">
             <span className="k">WALLET</span>
-            <span>
+            <span className="mono">
               {address.slice(0, 6)}…{address.slice(-4)} · {monBalance.toFixed(1)} MON
             </span>
           </div>
@@ -296,7 +316,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
               placeholder="shown once when the key is created"
             />
           </div>
-          <button className="btn primary block" onClick={doSaveKeys}>
+          <button className="btn block" onClick={doSaveKeys}>
             Save keys locally
           </button>
           <div className="console-note">
@@ -304,75 +324,92 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
             <a href="https://app.perpl.xyz/apikeys" target="_blank" rel="noreferrer">
               app.perpl.xyz/apikeys
             </a>{" "}
-            (connect wallet → create key). Keys are stored in this browser only.
+            (connect wallet → create key). Stored in this browser only.
           </div>
         </>
       ) : (
         <>
-          <div className="kv">
-            <span className="k">WALLET</span>
-            <span>
-              {address.slice(0, 6)}…{address.slice(-4)} · {monBalance.toFixed(1)} MON
-            </span>
-          </div>
-          <div className="kv">
-            <span className="k">PERPL ACCOUNT</span>
-            <span>
-              {session.status === "ready" && session.account
-                ? `#${session.account.id} · $${session.account.balanceUsd.toFixed(2)} free`
-                : session.status === "auth-failed"
-                  ? "key rejected"
-                  : session.status === "connecting"
-                    ? "connecting…"
-                    : "—"}
-            </span>
-          </div>
-          <div className="kv">
-            <span className="k">PERP SHORT</span>
-            <span>{shortMon > 0 ? `${shortMon.toFixed(1)} MON @ ${pos!.entryPx.toFixed(6)}` : "flat"}</span>
-          </div>
-
-          <div style={{ height: 16 }} />
-
           {shortMon <= 0.01 && working === "idle" ? (
             <>
-              <div className="field">
-                <label htmlFor="size">HEDGE SIZE (MON)</label>
-                <input
-                  id="size"
-                  value={sizeInput}
-                  onChange={(e) => setSizeInput(e.target.value)}
-                  placeholder={monBalance > 0 ? `up to ${monBalance.toFixed(0)}` : "0"}
-                  inputMode="decimal"
-                />
+              <div className="fieldbox">
+                <div className="fb-label">SPOT LONG — YOU HOLD</div>
+                <div className="fb-row">
+                  <span className="fb-main mono">{monBalance.toFixed(1)}</span>
+                  <span className="fb-token">
+                    <span className="dot" style={{ background: "hsl(var(--primary))" }} />
+                    MON
+                  </span>
+                </div>
+                <div className="fb-hint">
+                  {address.slice(0, 6)}…{address.slice(-4)} · ${(monBalance * midPx).toFixed(2)}
+                </div>
               </div>
-              <button className="btn primary block" onClick={doOpen} disabled={session.status !== "ready"}>
+              <div className="fieldbox">
+                <div className="fb-label">PERP SHORT — YOU OPEN</div>
+                <div className="fb-row">
+                  <input
+                    className="fb-main mono"
+                    value={sizeInput}
+                    onChange={(e) => setSizeInput(e.target.value)}
+                    placeholder={monBalance > 0 ? monBalance.toFixed(0) : "0.0"}
+                    inputMode="decimal"
+                    aria-label="Hedge size in MON"
+                  />
+                  <span className="fb-token">
+                    <span className="dot" style={{ background: "hsl(var(--mint))" }} />
+                    MON-PERP
+                  </span>
+                </div>
+                <div className="fb-hint">
+                  PostOnly at the ask · account{" "}
+                  {session.status === "ready" && session.account
+                    ? `#${session.account.id} · $${session.account.balanceUsd.toFixed(2)} free`
+                    : session.status === "auth-failed"
+                      ? "key rejected"
+                      : "connecting…"}
+                </div>
+              </div>
+              <button className="btn block" onClick={doOpen} disabled={session.status !== "ready"}>
                 Open hedge — maker short
               </button>
             </>
           ) : (
             <>
+              <div className="kv">
+                <span className="k">PERP SHORT</span>
+                <span className="mono">
+                  {shortMon > 0 ? `${shortMon.toFixed(1)} MON @ ${pos!.entryPx.toFixed(6)}` : "flat"}
+                </span>
+              </div>
+              <div className="kv">
+                <span className="k">ACCOUNT</span>
+                <span className="mono">
+                  {session.account ? `#${session.account.id} · $${session.account.balanceUsd.toFixed(2)} free` : "—"}
+                </span>
+              </div>
+
               {working !== "idle" && (
                 <div className="console-note">
                   {working === "opening" ? "Working the short at the ask…" : "Closing the short at the bid…"} PostOnly
                   orders re-post automatically while this tab stays open.
                 </div>
               )}
-              <div style={{ display: "flex", gap: 10 }}>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                 {working === "idle" ? (
                   <>
                     <button className="btn danger" style={{ flex: 1 }} onClick={doClose}>
                       Close hedge
                     </button>
                     {hedge && hedge.epochId === null && (
-                      <button className="btn" style={{ flex: 1 }} onClick={doAttest}>
+                      <button className="btn secondary" style={{ flex: 1 }} onClick={doAttest}>
                         Attest epoch on-chain
                       </button>
                     )}
                   </>
                 ) : (
                   <button
-                    className="btn"
+                    className="btn secondary"
                     style={{ flex: 1 }}
                     onClick={() => {
                       session.cancelAllMine();
@@ -388,7 +425,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
               <div className="churn-row">
                 <div>
                   <div className="t">Volume churn</div>
-                  <div className="d">Close and re-open 25% every 15 min with maker orders. Runs only while this tab is open.</div>
+                  <div className="d">Close and re-open 25% every 15 min with maker orders. Tab-open only.</div>
                 </div>
                 <button
                   className={`toggle ${churnOn ? "on" : ""}`}
@@ -404,11 +441,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
           )}
 
           <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-            <button
-              className="btn"
-              style={{ fontSize: 11, padding: "5px 10px", opacity: 0.7 }}
-              onClick={doClearKeys}
-            >
+            <button className="btn secondary sm" onClick={doClearKeys}>
               Clear keys
             </button>
           </div>
@@ -417,23 +450,19 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
 
       {note.text && <div className={`console-note ${note.kind}`}>{note.text}</div>}
 
-      <div className="spec" aria-label="Engine parameters">
-        <div className="cell">
-          <div className="sk">LEVERAGE</div>
-          <div className="sv">2.0×</div>
-        </div>
-        <div className="cell">
-          <div className="sk">CHURN CYCLE</div>
-          <div className="sv">15 MIN</div>
-        </div>
-        <div className="cell">
-          <div className="sk">SOFT / HARD δ</div>
-          <div className="sv">1% / 3%</div>
-        </div>
-        <div className="cell">
-          <div className="sk">RT COST</div>
-          <div className="sv">~1.8 BPS</div>
-        </div>
+      <div className="spec">
+        <span>
+          leverage <b>2.0×</b>
+        </span>
+        <span>
+          churn <b>15 min</b>
+        </span>
+        <span>
+          soft/hard δ <b>1% / 3%</b>
+        </span>
+        <span>
+          round trip <b>~1.8bps</b>
+        </span>
       </div>
     </section>
   );
