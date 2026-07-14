@@ -219,15 +219,19 @@ export default function App() {
       </nav>
 
       <div className="statsbar" aria-label="Live market stats">
-        <span className="pair">
-          <img src="/mon.svg" className="coin" alt="" />
-          MON-PERP
-        </span>
-        <span>
-          <span className="t-label">MARK</span>
-          <Fv text={mid ? `$${mid.toFixed(6)}` : "—"} num={mid} />
-          {!bookMid && lastCandle ? <span className="t-label" style={{ marginLeft: 5 }}>candle</span> : null}
-        </span>
+        <div className="stats-lead">
+          <span className="pair">
+            <img src="/mon.svg" className="coin" alt="" />
+            MON-PERP
+          </span>
+          <Fv text={mid ? `$${mid.toFixed(6)}` : "—"} num={mid} extra="lead-price" />
+          {stats ? (
+            <span className={`lead-chg ${stats.changePct >= 0 ? "up" : "down"}`}>
+              {stats.changePct >= 0 ? "▲" : "▼"} {Math.abs(stats.changePct).toFixed(2)}%
+            </span>
+          ) : null}
+          {!bookMid && lastCandle ? <span className="t-label">candle</span> : null}
+        </div>
         <span>
           <span className="t-label">SPOT · NT</span>
           <Fv text={spotPx ? `$${spotPx.toFixed(6)}` : "—"} num={spotPx} />

@@ -175,15 +175,15 @@ export class PerplFeed {
         this.onUpdate?.();
         break;
       case 16:
+        // The order-book stream's sn is a global block counter, NOT a per-stream
+        // +1 sequence (docs: "other streams may have gaps"). Do NOT reconnect on a
+        // gap — just apply the deltas; staleness is bounded by getBook()'s 15s guard.
         if (this.bookSid !== undefined && msg.sid !== this.bookSid) break;
-        if (typeof msg.sn === "number" && this.bookSn !== undefined && msg.sn !== this.bookSn + 1) {
-          this.ws?.close();
-          return;
-        }
         if (typeof msg.sn === "number") this.bookSn = msg.sn;
         for (const l of msg.bid ?? []) l.o === 0 ? this.bidMap.delete(l.p) : this.bidMap.set(l.p, l);
         for (const l of msg.ask ?? []) l.o === 0 ? this.askMap.delete(l.p) : this.askMap.set(l.p, l);
         this.bookAtMs = Date.now();
+        this.setConn("live");
         this.onUpdate?.();
         break;
       case 10: {

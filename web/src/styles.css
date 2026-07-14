@@ -1484,3 +1484,56 @@ footer {
   box-shadow: 0 1px 0 hsl(0 0% 100% / 0.12) inset;
 }
 .fieldbox:focus-within { border-color: hsl(var(--primary) / 0.5); }
+
+/* ══ REGION POLISH ════════════════════════════════════════════════════════ */
+
+/* 1 · statsbar lead — pair + big price + change chip */
+.stats-lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 18px;
+  margin-right: 4px;
+  border-right: 1px solid hsl(var(--border) / 0.7);
+}
+.stats-lead .pair { border-right: none; padding-right: 0; }
+.lead-price { font-size: 16px !important; font-weight: 700; }
+.lead-chg {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.lead-chg.up { color: hsl(var(--mint)); background: hsl(var(--mint) / 0.1); }
+.lead-chg.down { color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+
+/* 2 · card headers — accent bar + hairline instead of a glowing dot */
+.card-head .title i {
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: hsl(var(--primary));
+  box-shadow: none;
+}
+.term-grid .card-head,
+.bottom-body .card-head {
+  border-bottom: 1px solid hsl(var(--border) / 0.4);
+  padding-bottom: 9px;
+  margin-bottom: 12px;
+}
+.term-grid .card-head .title { gap: 8px; }
+
+/* 3 · drift gauge — cleaner track + readout */
+.gauge-slim .card-head { border-bottom: 1px solid hsl(var(--border) / 0.4); padding-bottom: 9px; margin-bottom: 12px; }
+.gauge-track { height: 12px; }
+.gauge-track .bubble { box-shadow: 0 0 0 1px hsl(var(--glow-mint) / 0.25), 0 0 12px hsl(var(--glow-mint) / 0.4); }
+.gauge-readout .big { font-size: 26px; letter-spacing: -0.01em; }
+.leg-box { padding: 11px 13px; }
+.leg-box .lb-k { color: hsl(var(--muted-foreground)); }
+
+/* 4 · engine session — tidy KPI rows */
+.engine-mini .kv { padding: 8px 0; border-bottom: 1px solid hsl(var(--border) / 0.35); }
+.engine-mini .kv .k { font-size: 10px; letter-spacing: 0.04em; }
+.engine-mini .kv .mono { font-size: 13px; }

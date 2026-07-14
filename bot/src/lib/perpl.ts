@@ -253,13 +253,11 @@ export class PerplFeed {
         break;
       }
       case 16: {
-        // L2BookUpdate — upsert levels; o:0 removes. On a sequence gap the book
-        // may have missed a delta: force a reconnect to get a fresh snapshot.
+        // L2BookUpdate — upsert levels; o:0 removes. The book stream's sn is a
+        // global block counter, not a per-stream +1 sequence (docs: "other streams
+        // may have gaps"), so a "gap" is normal — do NOT reconnect on it (that was
+        // a reconnect loop). Staleness is bounded by getBook()'s 15s guard.
         if (this.bookSid !== undefined && msg.sid !== this.bookSid) break;
-        if (typeof msg.sn === "number" && this.bookSn !== undefined && msg.sn !== this.bookSn + 1) {
-          this.ws?.close();
-          return;
-        }
         if (typeof msg.sn === "number") this.bookSn = msg.sn;
         for (const l of msg.bid ?? []) {
           if (l.o === 0) this.bidMap.delete(l.p);
