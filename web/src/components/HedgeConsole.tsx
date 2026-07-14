@@ -252,9 +252,9 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const shortMon = pos?.side === "short" ? pos.sizeMon : 0;
 
   return (
-    <div className="card">
-      <h2>HEDGE CONSOLE</h2>
-      <p className="card-sub">
+    <section className="panel">
+      <span className="placard tab">HEDGE CONSOLE</span>
+      <p className="panel-sub">
         Short the MON you hold. Spot stays in your wallet; the short earns points on Perpl. Keys never leave this
         browser, and API keys cannot withdraw funds by design.
       </p>
@@ -416,6 +416,25 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       )}
 
       {note.text && <div className={`console-note ${note.kind}`}>{note.text}</div>}
-    </div>
+
+      <div className="spec" aria-label="Engine parameters">
+        <div className="cell">
+          <div className="sk">LEVERAGE</div>
+          <div className="sv">2.0×</div>
+        </div>
+        <div className="cell">
+          <div className="sk">CHURN CYCLE</div>
+          <div className="sv">15 MIN</div>
+        </div>
+        <div className="cell">
+          <div className="sk">SOFT / HARD δ</div>
+          <div className="sv">1% / 3%</div>
+        </div>
+        <div className="cell">
+          <div className="sk">RT COST</div>
+          <div className="sv">~1.8 BPS</div>
+        </div>
+      </div>
+    </section>
   );
 }

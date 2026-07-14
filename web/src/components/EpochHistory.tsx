@@ -50,7 +50,7 @@ export function EpochHistory({ epochs, loading }: { epochs: EpochRow[]; loading:
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 12, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
+      <div className="reg-foot">
         Registry{" "}
         <a href={`https://monadscan.com/address/${REGISTRY_ADDRESS}`} target="_blank" rel="noreferrer">
           {short(REGISTRY_ADDRESS)}

@@ -92,3 +92,18 @@
 - Verified through the full production chain: HTTPS 200, `/perpl` REST proxy 200, and
   the market-data WS through Cloudflare → Caddy → Perpl (book snapshot received).
 - Production screenshot: live book, funding +17.5% APR (shorts earn), 2x boost, epochs.
+
+## Day 1 (cont.) — DESIGN OVERHAUL ("no AI slop" pass)
+
+User called the v1 design AI-slop — correct. Full redesign as an **avionics instrument
+unit**: aluminum bezel + corner screws + serial plate ("UNIT 001"), annunciator lamps
+(FEED/CHAIN/KEYS + HEDGED/DRIFT/REBAL), phosphor LCD readouts with scanlines, live UTC
+clock + block-number HUD chips, graduated SVG drift gauge (numbered ±5% scale, real
+soft/hard zones marked green/amber/red, glass tube, specular bubble), book as inset
+screen, "operation sequence" schematic strip, engraved spec table (real engine params).
+Killed: purple radial wash, uniform rounded cards, flat stat strip.
+
+**Testing gotcha:** Chrome headless `--window-size=390` clamps the real viewport to
+~440px and crops the PNG to 390 → mobile screenshots showed phantom overflow. Ground
+truth via 390px iframe measurement (scrollWidth 384) + real-browser zoom: mobile is
+clean. Deployed to production, bundle verified (index-CYmWVlnq.js).
