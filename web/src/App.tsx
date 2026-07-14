@@ -4,6 +4,7 @@ import { BookLadder } from "./components/BookLadder";
 import { DriftGauge } from "./components/DriftGauge";
 import { EngineTerminal, useEngineStatus } from "./components/EngineTerminal";
 import { EpochHistory } from "./components/EpochHistory";
+import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { PriceChart, useCandles } from "./components/PriceChart";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
@@ -61,7 +62,7 @@ export default function App() {
   const [epochsLoading, setEpochsLoading] = useState(true);
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
-  const [tab, setTab] = useState<"engine" | "epochs">("engine");
+  const [tab, setTab] = useState<"engine" | "epochs" | "estimator">("engine");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
   const engine = useEngineStatus();
@@ -347,19 +348,26 @@ export default function App() {
           <button role="tab" aria-selected={tab === "epochs"} className={tab === "epochs" ? "active" : ""} onClick={() => setTab("epochs")}>
             ON-CHAIN EPOCHS {epochs.length > 0 ? `(${epochs.length})` : ""}
           </button>
+          <button role="tab" aria-selected={tab === "estimator"} className={tab === "estimator" ? "active" : ""} onClick={() => setTab("estimator")}>
+            POINTS ESTIMATOR
+          </button>
           <span className="tab-meta">
             {tab === "engine"
               ? engine
                 ? `paper session · live mainnet data · ${engine.state}`
                 : "connecting…"
-              : latestEpoch
-                ? `latest: #${latestEpoch.epochId} · ${latestEpoch.closed ? "closed" : "open"} · ${ago(latestEpoch.openedAt)}`
-                : "HedgeRegistry"}
+              : tab === "estimator"
+                ? "live fees · funding · boost"
+                : latestEpoch
+                  ? `latest: #${latestEpoch.epochId} · ${latestEpoch.closed ? "closed" : "open"} · ${ago(latestEpoch.openedAt)}`
+                  : "HedgeRegistry"}
           </span>
         </div>
         <div className="bottom-body">
           {tab === "engine" ? (
             <EngineTerminal status={engine} />
+          ) : tab === "estimator" ? (
+            <Estimator market={market} fundingApr={fundingApr} />
           ) : (
             <EpochHistory epochs={epochs} loading={epochsLoading} />
           )}
