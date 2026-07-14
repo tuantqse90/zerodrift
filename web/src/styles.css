@@ -1015,3 +1015,39 @@ footer {
   .term-grid .col.book-col { display: flex; }
   .app .topbar .tagline { display: none; }
 }
+
+/* ── polish: timeframe switcher ─────────────────────────────────────────── */
+.tf-btns { display: inline-flex; gap: 2px; background: hsl(var(--background) / 0.6); border: 1px solid hsl(var(--border) / 0.7); border-radius: 8px; padding: 2px; }
+.tf-btns button {
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+.tf-btns button.active { background: hsl(var(--secondary)); color: hsl(var(--foreground)); }
+.tf-btns button:hover:not(.active) { color: hsl(var(--foreground)); }
+
+/* ── polish: price flash on change ──────────────────────────────────────── */
+.fl-up { animation: flUp 0.7s ease-out; }
+.fl-down { animation: flDown 0.7s ease-out; }
+@keyframes flUp { 0% { color: hsl(var(--mint)); text-shadow: 0 0 9px hsl(var(--mint) / 0.6); } }
+@keyframes flDown { 0% { color: hsl(0 84% 70%); text-shadow: 0 0 9px hsl(0 84% 70% / 0.55); } }
+
+/* ── polish: book hover + mid emphasis ──────────────────────────────────── */
+.ladder-row:hover { background: hsl(var(--secondary) / 0.5); }
+.ladder-row .num.sum { color: hsl(var(--muted-foreground)); }
+
+/* ── polish: engine session mini-panel ──────────────────────────────────── */
+.engine-mini .kv { font-size: 12px; padding: 7px 2px; }
+.engine-mini .kv .v-mint { color: hsl(var(--mint)); }
+.engine-mini .kv .v-warn { color: hsl(var(--warning)); }
+.engine-mini .foot {
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+}

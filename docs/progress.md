@@ -121,3 +121,11 @@ live; the terminal log + 3 statstrip numbers were static. Fixed properly:
 - Statstrip now fully derived: maker fee + boost from Perpl context, round-trip = 2×maker,
   funding from WS, round-trips + week volume from the engine feed.
 - Local Mac paper run retired in favor of the VPS runner (ledgers kept in bot/data).
+
+## Day 1 (cont.) — terminal polish
+
+- Timeframe switcher on the chart (5m/15m/1h/4h — CandleFeed re-subscribes per resolution).
+- Statsbar MARK/SPOT/SPREAD flash mint/red on change (exchange-style tick flash).
+- Book upgraded to cumulative depth (SUM $ column + cumulative bars) + row hover.
+- "Engine session" panel under the console: state/RT/volume/fees/funding from status.json.
+- Chart height tuned to fill its column. All verified on production via real-browser clicks.

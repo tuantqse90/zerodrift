@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CandleFeed, type Candle, type PerplMarketInfo } from "../lib/perplFeed";
 
 const W = 920;
-const H = 260;
+const H = 460;
 const PAD = { top: 10, right: 64, bottom: 22, left: 8 };
 
 export function useCandles(market: PerplMarketInfo | null, resolutionSec = 900): Candle[] {
@@ -142,7 +142,7 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
           className="chart-tip mono"
           style={{ left: `${(x(hover!) / W) * 100}%`, transform: x(hover!) > W * 0.7 ? "translateX(-105%)" : "translateX(8px)" }}
         >
-          <div className="tt-time">{fmtTime(hovered.t)} UTC · 15m</div>
+          <div className="tt-time">{fmtTime(hovered.t)} UTC</div>
           <div>O {hovered.o.toFixed(dec)}</div>
           <div>H {hovered.h.toFixed(dec)}</div>
           <div>L {hovered.l.toFixed(dec)}</div>

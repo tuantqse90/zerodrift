@@ -28,6 +28,23 @@ function useBlockNumber(): bigint | null {
   return block;
 }
 
+/** Mono value that flashes mint/red when its numeric source moves. */
+function Fv({ text, num, extra = "" }: { text: string; num: number | null; extra?: string }) {
+  const prev = useRef<number | null>(null);
+  const [cls, setCls] = useState("");
+  useEffect(() => {
+    if (num == null) return;
+    if (prev.current != null && num !== prev.current) {
+      setCls(num > prev.current ? "fl-up" : "fl-down");
+      const t = setTimeout(() => setCls(""), 700);
+      prev.current = num;
+      return () => clearTimeout(t);
+    }
+    prev.current = num;
+  }, [num]);
+  return <span className={`t-val ${extra} ${cls}`}>{text}</span>;
+}
+
 function ago(unixSec: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - unixSec);
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
@@ -48,7 +65,8 @@ export default function App() {
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
   const engine = useEngineStatus();
-  const candles = useCandles(market);
+  const [res, setRes] = useState(900);
+  const candles = useCandles(market, res);
 
   useEffect(() => {
     let live = true;
@@ -167,11 +185,11 @@ export default function App() {
         </span>
         <span>
           <span className="t-label">MARK</span>
-          <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
+          <Fv text={mid ? `$${mid.toFixed(6)}` : "—"} num={mid} />
         </span>
         <span>
           <span className="t-label">SPOT · NT</span>
-          <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
+          <Fv text={spotPx ? `$${spotPx.toFixed(6)}` : "—"} num={spotPx} />
         </span>
         <span>
           <span className="t-label">FUNDING 1H</span>
@@ -196,7 +214,7 @@ export default function App() {
         </span>
         <span>
           <span className="t-label">SPREAD</span>
-          <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
+          <Fv text={spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"} num={spreadBps} />
         </span>
         <span>
           <span className="t-label">ENGINE</span>
@@ -216,10 +234,28 @@ export default function App() {
             <div className="card-head">
               <span className="title">
                 <i />
-                MON-perp · 15m
+                MON-perp
               </span>
-              <span className="meta mono">
-                Perpl candles · last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span className="meta mono">
+                  last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
+                </span>
+                <span className="tf-btns" role="tablist" aria-label="Timeframe">
+                  {[
+                    [300, "5m"],
+                    [900, "15m"],
+                    [3600, "1h"],
+                    [14400, "4h"],
+                  ].map(([sec, label]) => (
+                    <button
+                      key={sec}
+                      className={res === sec ? "active" : ""}
+                      onClick={() => setRes(sec as number)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </span>
               </span>
             </div>
             <PriceChart market={market} candles={candles} />
@@ -258,6 +294,48 @@ export default function App() {
             setSession={setSession}
             onHedgeChange={onHedgeChange}
           />
+          <section className="card glass engine-mini">
+            <div className="card-head">
+              <span className="title">
+                <i />
+                Engine session
+              </span>
+              <span className="meta mono">{engine ? engine.mode.toLowerCase() : "connecting…"}</span>
+            </div>
+            {engine ? (
+              <>
+                <div className="kv">
+                  <span className="k">STATE</span>
+                  <span className="mono v-mint">{engine.state}</span>
+                </div>
+                <div className="kv">
+                  <span className="k">ROUND TRIPS</span>
+                  <span className="mono">{engine.roundTrips}</span>
+                </div>
+                <div className="kv">
+                  <span className="k">WEEK VOLUME</span>
+                  <span className="mono v-mint">${engine.weekVolumeUsd.toFixed(2)}</span>
+                </div>
+                <div className="kv">
+                  <span className="k">FEES PAID</span>
+                  <span className="mono">${(engine.makerFeesUsd + engine.takerFeesUsd).toFixed(4)}</span>
+                </div>
+                <div className="kv">
+                  <span className="k">FUNDING</span>
+                  <span className={`mono ${engine.fundingAprPct >= 0 ? "v-mint" : "v-warn"}`}>
+                    {engine.fundingAprPct >= 0 ? "+" : ""}
+                    {engine.fundingAprPct.toFixed(1)}% APR
+                  </span>
+                </div>
+                <div className="foot">
+                  Same engine ships as a headless bot — paper by default, live with your keys. Volume here is the
+                  bot's own session, not yours.
+                </div>
+              </>
+            ) : (
+              <div className="empty">waiting for /status.json…</div>
+            )}
+          </section>
         </div>
       </div>
 
