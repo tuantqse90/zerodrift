@@ -4,7 +4,15 @@
 import type { PerplBook } from "../lib/perplFeed";
 
 export function BookLadder({ book, depth = 5 }: { book: PerplBook | null; depth?: number }) {
-  if (!book) return <div className="empty">Waiting for the Perpl order book…</div>;
+  if (!book) {
+    return (
+      <div className="ladder book-skeleton" aria-label="Loading order book">
+        {Array.from({ length: depth * 2 + 1 }).map((_, i) => (
+          <div key={i} className="sk-row" style={{ animationDelay: `${i * 60}ms` }} />
+        ))}
+      </div>
+    );
+  }
 
   const asksRaw = book.asks.slice(0, depth); // best → worst
   const bidsRaw = book.bids.slice(0, depth);

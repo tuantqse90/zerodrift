@@ -1,25 +1,43 @@
-// PriceChart — MON-perp candlesticks straight from Perpl's candle stream.
-// Up candles are HOLLOW (mint outline), down candles FILLED (red) — polarity is
-// never carried by hue alone. Violet dashed line marks the live last price.
-// Crosshair + OHLC tooltip on hover.
+// PriceChart — MON-perp candlesticks + volume histogram from Perpl's candle
+// stream. Up candles are HOLLOW (mint outline), down candles FILLED (red) — so
+// polarity never rests on hue alone. Violet dashed line marks the live last
+// price; volume bars share the up/down coloring. Crosshair + OHLCV tooltip.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CandleFeed, type Candle, type PerplMarketInfo } from "../lib/perplFeed";
 
 const W = 920;
 const H = 460;
-const PAD = { top: 10, right: 64, bottom: 22, left: 8 };
+const PAD = { top: 8, right: 64, left: 8 };
+const TIME_AXIS = H - 6;
+const VOL_BOTTOM = H - 24;
+const VOL_H = 58;
+const VOL_TOP = VOL_BOTTOM - VOL_H;
+const PRICE_BOTTOM = VOL_TOP - 12;
 
 export function useCandles(market: PerplMarketInfo | null, resolutionSec = 900): Candle[] {
   const [candles, setCandles] = useState<Candle[]>([]);
   useEffect(() => {
     if (!market) return;
+    setCandles([]);
     const feed = new CandleFeed(market, resolutionSec);
     feed.onUpdate = () => setCandles([...feed.candles]);
     feed.start();
     return () => feed.stop();
   }, [market, resolutionSec]);
   return candles;
+}
+
+/** Range summary over the loaded window (Δ from first→last close, H/L, total vol). */
+export function candleStats(candles: Candle[]) {
+  if (candles.length < 2) return null;
+  const first = candles[0];
+  const last = candles[candles.length - 1];
+  const high = Math.max(...candles.map((c) => c.h));
+  const low = Math.min(...candles.map((c) => c.l));
+  const vol = candles.reduce((s, c) => s + c.v, 0);
+  const changePct = ((last.c - first.c) / first.c) * 100;
+  return { last: last.c, changePct, high, low, vol };
 }
 
 function fmtTime(ms: number): string {
@@ -39,21 +57,23 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
     const min = lo - padPx;
     const max = hi + padPx;
     const plotW = W - PAD.left - PAD.right;
-    const plotH = H - PAD.top - PAD.bottom;
     const step = plotW / candles.length;
+    const maxVol = Math.max(...candles.map((c) => c.v), 1);
     const x = (i: number) => PAD.left + step * (i + 0.5);
-    const y = (p: number) => PAD.top + plotH * (1 - (p - min) / (max - min));
-    return { min, max, step, x, y, plotW, plotH };
+    const y = (p: number) => PAD.top + (PRICE_BOTTOM - PAD.top) * (1 - (p - min) / (max - min));
+    const vy = (v: number) => VOL_BOTTOM - (v / maxVol) * VOL_H;
+    return { min, max, step, x, y, vy };
   }, [candles]);
 
   if (!market || !view) {
-    return <div className="empty">Waiting for Perpl candles…</div>;
+    return <div className="chart-skeleton" aria-label="Loading chart" />;
   }
 
-  const { x, y, step } = view;
+  const { x, y, vy, step } = view;
   const last = candles[candles.length - 1];
   const lastUp = last.c >= last.o;
   const bodyW = Math.max(3, Math.min(9, step - 2.5));
+  const volW = Math.max(2, Math.min(8, step - 3));
   const yTicks = 4;
   const priceAt = (f: number) => view.min + (view.max - view.min) * f;
   const dec = market.priceDecimals;
@@ -77,7 +97,7 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
       >
-        {/* recessive grid + right-side price labels */}
+        {/* price grid + right-side labels */}
         {Array.from({ length: yTicks + 1 }, (_, i) => {
           const p = priceAt(i / yTicks);
           const yy = y(p);
@@ -90,16 +110,34 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
             </g>
           );
         })}
-        {/* sparse time labels */}
+
+        {/* volume histogram */}
+        {candles.map((c, i) => {
+          const up = c.c >= c.o;
+          return (
+            <rect
+              key={`v${c.t}`}
+              x={x(i) - volW / 2}
+              y={vy(c.v)}
+              width={volW}
+              height={Math.max(0.5, VOL_BOTTOM - vy(c.v))}
+              className={up ? "vol-up" : "vol-down"}
+              opacity={hover === null || hover === i ? 1 : 0.5}
+            />
+          );
+        })}
+        <line x1={PAD.left} x2={W - PAD.right} y1={VOL_BOTTOM} y2={VOL_BOTTOM} className="grid-line" />
+
+        {/* time labels */}
         {candles.map((c, i) =>
           i % 12 === 0 ? (
-            <text key={c.t} x={x(i)} y={H - 6} textAnchor="middle" className="axis-label">
+            <text key={c.t} x={x(i)} y={TIME_AXIS} textAnchor="middle" className="axis-label">
               {fmtTime(c.t)}
             </text>
           ) : null,
         )}
 
-        {/* candles: hollow up / filled down */}
+        {/* candles */}
         {candles.map((c, i) => {
           const up = c.c >= c.o;
           const cx = x(i);
@@ -109,20 +147,12 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
           return (
             <g key={c.t} className={up ? "candle-up" : "candle-down"} opacity={hover === null || hover === i ? 1 : 0.55}>
               <line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} className="wick" />
-              <rect
-                x={cx - bodyW / 2}
-                y={top}
-                width={bodyW}
-                height={h}
-                rx={1.5}
-                className="body"
-                fill={up ? "transparent" : undefined}
-              />
+              <rect x={cx - bodyW / 2} y={top} width={bodyW} height={h} rx={1.5} className="body" fill={up ? "transparent" : undefined} />
             </g>
           );
         })}
 
-        {/* live last-price line */}
+        {/* live last-price line + chip */}
         <line x1={PAD.left} x2={W - PAD.right} y1={y(last.c)} y2={y(last.c)} className="last-line" />
         <g transform={`translate(${W - PAD.right + 4}, ${y(last.c) - 9})`}>
           <rect width={PAD.right - 6} height={18} rx={4} className={`last-chip ${lastUp ? "up" : "down"}`} />
@@ -132,9 +162,7 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
         </g>
 
         {/* crosshair */}
-        {hovered && (
-          <line x1={x(hover!)} x2={x(hover!)} y1={PAD.top} y2={H - PAD.bottom} className="crosshair" />
-        )}
+        {hovered && <line x1={x(hover!)} x2={x(hover!)} y1={PAD.top} y2={VOL_BOTTOM} className="crosshair" />}
       </svg>
 
       {hovered && (
@@ -152,8 +180,8 @@ export function PriceChart({ market, candles }: { market: PerplMarketInfo | null
       )}
 
       <p className="sr-only">
-        MON perpetual price over the last {candles.length} fifteen-minute candles: low{" "}
-        {view.min.toFixed(dec)}, high {view.max.toFixed(dec)}, last {last.c.toFixed(dec)}.
+        MON perpetual price over the last {candles.length} candles: low {view.min.toFixed(dec)}, high{" "}
+        {view.max.toFixed(dec)}, last {last.c.toFixed(dec)}.
       </p>
     </div>
   );

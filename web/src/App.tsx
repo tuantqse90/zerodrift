@@ -7,7 +7,7 @@ import { EpochHistory } from "./components/EpochHistory";
 import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { HistorySpark } from "./components/HistorySpark";
-import { PriceChart, useCandles } from "./components/PriceChart";
+import { PriceChart, candleStats, useCandles } from "./components/PriceChart";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
   fetchPerplMarket,
@@ -129,7 +129,9 @@ export default function App() {
 
   const onHedgeChange = useCallback((spotMon: number) => setHedgeSpotMon(spotMon), []);
 
-  const mid = book ? (book.bids[0].px + book.asks[0].px) / 2 : null;
+  const bookMid = book ? (book.bids[0].px + book.asks[0].px) / 2 : null;
+  const lastCandle = candles.length ? candles[candles.length - 1].c : null;
+  const mid = bookMid ?? lastCandle;
   const spreadBps = book ? ((book.asks[0].px - book.bids[0].px) / book.bids[0].px) * 10_000 : null;
   const pos = session?.position;
   const shortMon = pos?.side === "short" ? pos.sizeMon : 0;
@@ -147,6 +149,15 @@ export default function App() {
 
   const shortsEarn = fundingApr !== null && fundingApr > 0;
   const latestEpoch = epochs[0];
+  const stats = candleStats(candles);
+
+  // Live tab title like a real exchange: "$0.0224 ▲ MON-PERP · ZeroDrift".
+  useEffect(() => {
+    if (mid) {
+      const arrow = stats && stats.changePct >= 0 ? "\u25B2" : "\u25BC";
+      document.title = `$${mid.toFixed(6)} ${arrow} MON-PERP \u00B7 ZeroDrift`;
+    }
+  }, [mid, stats]);
 
   return (
     <div className="app">
@@ -188,6 +199,7 @@ export default function App() {
         <span>
           <span className="t-label">MARK</span>
           <Fv text={mid ? `$${mid.toFixed(6)}` : "—"} num={mid} />
+          {!bookMid && lastCandle ? <span className="t-label" style={{ marginLeft: 5 }}>candle</span> : null}
         </span>
         <span>
           <span className="t-label">SPOT · NT</span>
@@ -238,11 +250,7 @@ export default function App() {
                 <i />
                 MON-perp
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="meta mono">
-                  last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
-                </span>
-                <span className="tf-btns" role="tablist" aria-label="Timeframe">
+              <span className="tf-btns" role="tablist" aria-label="Timeframe">
                   {[
                     [300, "5m"],
                     [900, "15m"],
@@ -257,9 +265,35 @@ export default function App() {
                       {label}
                     </button>
                   ))}
-                </span>
               </span>
             </div>
+            {stats && (
+              <div className="chart-stats mono">
+                <span>
+                  <span className="cs-k">LAST</span>
+                  <span className="cs-v">{stats.last.toFixed(6)}</span>
+                </span>
+                <span>
+                  <span className="cs-k">Δ RANGE</span>
+                  <span className={`cs-v ${stats.changePct >= 0 ? "up" : "down"}`}>
+                    {stats.changePct >= 0 ? "+" : ""}
+                    {stats.changePct.toFixed(2)}%
+                  </span>
+                </span>
+                <span>
+                  <span className="cs-k">HIGH</span>
+                  <span className="cs-v">{stats.high.toFixed(6)}</span>
+                </span>
+                <span>
+                  <span className="cs-k">LOW</span>
+                  <span className="cs-v">{stats.low.toFixed(6)}</span>
+                </span>
+                <span>
+                  <span className="cs-k">VOL</span>
+                  <span className="cs-v">${(stats.vol / 1000).toFixed(0)}k</span>
+                </span>
+              </div>
+            )}
             <PriceChart market={market} candles={candles} />
           </section>
           <div className="gauge-slim">
