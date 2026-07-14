@@ -150,6 +150,16 @@ bun run hedger
 Contract side: `cd contracts && forge test` (9/9), deploy via
 `script/deploy-hedge-registry.sh`.
 
+## Tests
+
+| Suite | Command | Coverage |
+|---|---|---|
+| Contract | `cd contracts && forge test` | 9/9 — HedgeRegistry store/emit, close guards, cross-owner isolation, fuzz round-trip |
+| Bot unit | `cd bot && bun run test:unit` | 30/30 — churn-policy regimes & safety rails, funding APR/hysteresis, VWAP math, Ed25519 sign-in round-trip, ISO-week bucketing |
+| Bot integration | `cd bot && bun run test:integration` | 5/5 — PaperPerplExecutor order lifecycle (maker fill → position → balance, taker close) + **live Perpl mainnet** (context, L2 book, coherence) |
+
+Full bot suite: `cd bot && bun test` (35/35). Live tests skip with `SKIP_LIVE=1`.
+
 ## Built for Monad Spark
 
 A 6-day on-chain build: an immutable verified contract on Monad mainnet, an autonomous bot
