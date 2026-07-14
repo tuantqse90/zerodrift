@@ -2,11 +2,11 @@
 
 import type { PerplBook } from "../lib/perplFeed";
 
-export function BookLadder({ book }: { book: PerplBook | null }) {
+export function BookLadder({ book, depth = 5 }: { book: PerplBook | null; depth?: number }) {
   if (!book) return <div className="empty">Waiting for the Perpl order book…</div>;
 
-  const asks = book.asks.slice(0, 5).reverse();
-  const bids = book.bids.slice(0, 5);
+  const asks = book.asks.slice(0, depth).reverse();
+  const bids = book.bids.slice(0, depth);
   const maxSz = Math.max(...asks.map((l) => l.sz), ...bids.map((l) => l.sz), 1);
   const spread = book.asks[0].px - book.bids[0].px;
   const spreadBps = (spread / book.bids[0].px) * 10_000;

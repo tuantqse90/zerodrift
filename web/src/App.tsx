@@ -44,6 +44,7 @@ export default function App() {
   const [epochsLoading, setEpochsLoading] = useState(true);
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
+  const [tab, setTab] = useState<"engine" | "epochs">("engine");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
   const engine = useEngineStatus();
@@ -127,56 +128,9 @@ export default function App() {
   const shortsEarn = fundingApr !== null && fundingApr > 0;
   const latestEpoch = epochs[0];
 
-  const TickerItems = ({ ariaHidden }: { ariaHidden?: boolean }) => (
-    <span style={{ display: "inline-flex", gap: 44 }} aria-hidden={ariaHidden || undefined}>
-
-          <span>
-            <span className="t-label">MON-PERP</span>
-            <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">SPOT</span>
-            <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">FUNDING</span>
-            <span className={`t-val ${fundingApr === null ? "" : shortsEarn ? "up" : "down"}`}>
-              {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR`}
-            </span>
-            <span className="t-label" style={{ marginLeft: 7 }}>
-              {fundingApr === null ? "" : shortsEarn ? "SHORTS EARN" : "SHORTS PAY"}
-            </span>
-          </span>
-          <span>
-            <span className="t-label">MAKER</span>
-            <span className="t-val up">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">TAKER</span>
-            <span className="t-val">{market ? `${(market.takerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">POINTS</span>
-            <span className="t-val violet">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}× BOOST` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">SPREAD</span>
-            <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
-          </span>
-          <span>
-            <span className="t-label">BLOCK</span>
-            <span className="t-val">{blockNumber ? blockNumber.toLocaleString() : "—"}</span>
-          </span>
-    </span>
-  );
-
   return (
-    <div className="wrap">
-      <a href="#console" className="sr-only">
-        Skip to hedge console
-      </a>
-
-      <nav className="nav">
+    <div className="app">
+      <nav className="topbar">
         <div className="brand">
           <span>
             <span className="zero">Zero</span>Drift
@@ -188,190 +142,154 @@ export default function App() {
             </a>
           </span>
         </div>
+        <span className="tagline">Delta-neutral Perpl points farming — hold MON, short the perp, farm the volume.</span>
+        <span className="spacer" />
         <div className="nav-right">
           <span className={`live-dot ${book ? "on" : ""}`}>
             <i />
-            PERPL FEED
+            PERPL
           </span>
           <span className={`live-dot ${blockNumber ? "on" : ""}`}>
             <i />
             MONAD
           </span>
+          <span className={`live-dot ${engine ? "on" : ""}`}>
+            <i />
+            ENGINE
+          </span>
         </div>
       </nav>
 
-      <div className="ticker mono" aria-label="Live market data">
-        <div className="track">
-          <TickerItems />
-          <TickerItems ariaHidden />
-        </div>
-      </div>
-
-      <header className="hero">
-        <span className="pill mono">
-          <i />
-          LIVE ON MONAD MAINNET · PURPLE SUMMER
+      <div className="statsbar" aria-label="Live market stats">
+        <span className="pair">
+          <span className="dot" />
+          MON-PERP
         </span>
-        <h1>
-          Farm Perpl points, <span className="violet">stay flat</span>
-        </h1>
-        <p className="sub">
-          Hold MON as the long, short the same size on <strong>Perpl</strong> with maker orders, and churn volume
-          through the <strong>2×-boosted MON market</strong> — price moves cancel out, the points don't. Every hedge
-          is attested on-chain.
-        </p>
-      </header>
-
-      <div className="duo" id="console">
-        <HedgeConsole
-          market={market}
-          book={book}
-          session={session}
-          setSession={setSession}
-          onHedgeChange={onHedgeChange}
-        />
-        <DriftGauge
-          spotMon={hedgeSpotMon}
-          spotUsd={hedgeSpotMon * (spotPx ?? mid ?? 0)}
-          shortMon={shortMon}
-          shortUsd={shortMon * (mid ?? 0)}
-          deltaPct={deltaPct}
-          stateLabel={stateLabel}
-          hasHedge={hasHedge}
-        />
+        <span>
+          <span className="t-label">MARK</span>
+          <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">SPOT · NT</span>
+          <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">FUNDING 1H</span>
+          <span className={`t-val ${fundingApr === null ? "" : shortsEarn ? "up" : "down"}`}>
+            {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR`}
+          </span>
+          <span className="t-label" style={{ marginLeft: 6 }}>
+            {fundingApr === null ? "" : shortsEarn ? "SHORTS EARN" : "SHORTS PAY"}
+          </span>
+        </span>
+        <span>
+          <span className="t-label">FEES M/T</span>
+          <span className="t-val">
+            <span className="up">{market ? (market.makerFeeMicros / 100).toFixed(1) : "—"}</span>
+            {" / "}
+            {market ? (market.takerFeeMicros / 100).toFixed(1) : "—"}bps
+          </span>
+        </span>
+        <span>
+          <span className="t-label">POINTS</span>
+          <span className="t-val violet">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}× BOOST` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">SPREAD</span>
+          <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
+        </span>
+        <span>
+          <span className="t-label">ENGINE</span>
+          <span className="t-val">
+            {engine ? `${engine.state} · ${engine.roundTrips} RT · $${engine.weekVolumeUsd.toFixed(0)} wk` : "—"}
+          </span>
+        </span>
+        <span>
+          <span className="t-label">BLOCK</span>
+          <span className="t-val">{blockNumber ? blockNumber.toLocaleString() : "—"}</span>
+        </span>
       </div>
 
-      <section className="card glass" style={{ marginBottom: 26 }}>
-        <div className="card-head">
-          <span className="title">
-            <i />
-            MON-perp · 15m
-          </span>
-          <span className="meta mono">
-            Perpl candles · last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
-          </span>
-        </div>
-        <PriceChart market={market} candles={candles} />
-      </section>
-
-      <div className="statstrip">
-        <div className="inner glass">
-          <div className="stat">
-            <div className="v mint">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</div>
-            <div className="k">MAKER FEE</div>
-          </div>
-          <div className="stat">
-            <div className="v">{market ? `~${((market.makerFeeMicros / 100) * 2).toFixed(1)}bps` : "—"}</div>
-            <div className="k">CHURN ROUND TRIP</div>
-          </div>
-          <div className="stat">
-            <div className="v">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}×` : "—"}</div>
-            <div className="k">MON POINTS BOOST</div>
-          </div>
-          <div className="stat">
-            <div className={`v ${shortsEarn ? "mint" : "warn"}`}>
-              {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}%`}
+      <div className="term-grid">
+        <div className="col">
+          <section className="card glass" style={{ flex: 1 }}>
+            <div className="card-head">
+              <span className="title">
+                <i />
+                MON-perp · 15m
+              </span>
+              <span className="meta mono">
+                Perpl candles · last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
+              </span>
             </div>
-            <div className="k">FUNDING APR</div>
+            <PriceChart market={market} candles={candles} />
+          </section>
+          <div className="gauge-slim">
+            <DriftGauge
+              spotMon={hedgeSpotMon}
+              spotUsd={hedgeSpotMon * (spotPx ?? mid ?? 0)}
+              shortMon={shortMon}
+              shortUsd={shortMon * (mid ?? 0)}
+              deltaPct={deltaPct}
+              stateLabel={stateLabel}
+              hasHedge={hasHedge}
+            />
           </div>
-          <div className="stat">
-            <div className="v">{engine ? engine.roundTrips : "—"}</div>
-            <div className="k">ENGINE ROUND TRIPS</div>
-          </div>
-          <div className="stat">
-            <div className="v mint">{engine ? `$${engine.weekVolumeUsd.toFixed(0)}` : "—"}</div>
-            <div className="k">ENGINE WEEK VOLUME</div>
-          </div>
+        </div>
+
+        <div className="col book-col">
+          <section className="card glass book-card">
+            <div className="card-head">
+              <span className="title">
+                <i />
+                Book
+              </span>
+              <span className="meta mono">on-chain CLOB</span>
+            </div>
+            <BookLadder book={book} depth={9} />
+          </section>
+        </div>
+
+        <div className="col">
+          <HedgeConsole
+            market={market}
+            book={book}
+            session={session}
+            setSession={setSession}
+            onHedgeChange={onHedgeChange}
+          />
         </div>
       </div>
 
-      {latestEpoch && (
-        <div className="live-line">
-          <span className="pill">
-            <i />
-            <b>EPOCH #{latestEpoch.epochId}</b>
-            <span className="addr">${latestEpoch.notionalUsd.toFixed(2)}</span>
-            by {latestEpoch.owner.slice(0, 6)}…{latestEpoch.owner.slice(-4)} ·{" "}
-            {latestEpoch.closed ? "closed" : "open"} · {ago(latestEpoch.openedAt)}
+      <div className="bottom-panel">
+        <div className="bottom-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "engine"} className={tab === "engine" ? "active" : ""} onClick={() => setTab("engine")}>
+            ENGINE LOG
+          </button>
+          <button role="tab" aria-selected={tab === "epochs"} className={tab === "epochs" ? "active" : ""} onClick={() => setTab("epochs")}>
+            ON-CHAIN EPOCHS {epochs.length > 0 ? `(${epochs.length})` : ""}
+          </button>
+          <span className="tab-meta">
+            {tab === "engine"
+              ? engine
+                ? `paper session · live mainnet data · ${engine.state}`
+                : "connecting…"
+              : latestEpoch
+                ? `latest: #${latestEpoch.epochId} · ${latestEpoch.closed ? "closed" : "open"} · ${ago(latestEpoch.openedAt)}`
+                : "HedgeRegistry"}
           </span>
         </div>
-      )}
-
-      <EngineTerminal status={engine} />
-
-      <div className="deck">
-        <section className="card glass">
-          <div className="card-head">
-            <span className="title">
-              <i />
-              MON-perp book
-            </span>
-            <span className="meta mono">Perpl on-chain CLOB</span>
-          </div>
-          <p className="card-sub">Live depth. Maker orders join the touch — no impact, 0.9bps.</p>
-          <BookLadder book={book} />
-        </section>
-        <section className="card glass">
-          <div className="card-head">
-            <span className="title">
-              <i />
-              On-chain epochs
-            </span>
-            <span className="meta mono">HedgeRegistry</span>
-          </div>
-          <p className="card-sub">Every hedge writes an epoch on-chain — public proof of delta-neutral farming.</p>
-          <EpochHistory epochs={epochs} loading={epochsLoading} />
-        </section>
-      </div>
-
-      <div className="features">
-        <div className="feature glass">
-          <div className="f-icon">δ→0</div>
-          <h3>Delta-neutral by construction</h3>
-          <p>
-            Spot long and perp short cancel out. MON can double or halve — your PnL is fees and funding, not
-            direction.
-          </p>
+        <div className="bottom-body">
+          {tab === "engine" ? (
+            <EngineTerminal status={engine} />
+          ) : (
+            <EpochHistory epochs={epochs} loading={epochsLoading} />
+          )}
         </div>
-        <div className="feature glass">
-          <div className="f-icon">0.9bps</div>
-          <h3>Maker-only churn</h3>
-          <p>
-            PostOnly orders at the touch, re-posted automatically. A full churn round trip costs ~1.8bps against a 2×
-            points boost — and funding currently pays the short.
-          </p>
-        </div>
-        <div className="feature glass">
-          <div className="f-icon">⛓</div>
-          <h3>Attested on-chain</h3>
-          <p>
-            The HedgeRegistry contract logs every epoch — open, close, notional — permissionless and verified on
-            MonadScan. No trust, just receipts.
-          </p>
-        </div>
-      </div>
-
-      <div className="callout">
-        <div className="c-icon">＄</div>
-        <div className="c-text">
-          <b>Run it headless</b>
-          <p>
-            The same engine ships as a bot — <code>bun run hedger</code> — with Telegram alerts, PnL decomposition,
-            and paper mode by default. Point it at your keys and it farms while you sleep.
-          </p>
-        </div>
-        <a
-          className="c-link"
-          href="https://monadscan.com/address/0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48"
-          target="_blank"
-          rel="noreferrer"
-        >
-          View the contract →
-        </a>
       </div>
 
       <footer>
-        <span>ZeroDrift · powered by NullTerminal · built for Monad Spark</span>
+        <span>ZeroDrift · powered by NullTerminal · built for Monad Spark · not financial advice</span>
         <span>
           HedgeRegistry{" "}
           <a
@@ -381,7 +299,7 @@ export default function App() {
           >
             0x24BD…3A48
           </a>{" "}
-          · Monad 143 · not financial advice
+          · Monad 143
         </span>
       </footer>
     </div>

@@ -863,3 +863,155 @@ footer {
 .chart-tip .up { color: hsl(var(--mint)); }
 .chart-tip .down { color: hsl(0 84% 70%); }
 .chart-tip .tt-vol { color: hsl(var(--muted-foreground)); margin-top: 4px; }
+
+/* ══ APP SHELL — Perpl-style trading terminal layout ═══════════════════════ */
+.app {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app .topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 2px;
+}
+.app .topbar .tagline {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  border-left: 1px solid hsl(var(--border));
+  padding-left: 14px;
+}
+.app .topbar .spacer { flex: 1; }
+
+/* dense static stats bar (values update live) */
+.statsbar {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border: 1px solid hsl(var(--border) / 0.7);
+  border-radius: 10px;
+  background: hsl(var(--card) / 0.55);
+  padding: 9px 16px;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1, "zero" 1;
+  font-size: 12px;
+  white-space: nowrap;
+  margin-bottom: 10px;
+}
+.statsbar::-webkit-scrollbar { display: none; }
+.statsbar .pair {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 18px;
+  border-right: 1px solid hsl(var(--border) / 0.7);
+}
+.statsbar .pair .dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--primary)); }
+.statsbar .t-label { color: hsl(var(--muted-foreground)); font-size: 10px; letter-spacing: 0.1em; margin-right: 6px; }
+.statsbar .t-val { color: hsl(var(--foreground)); font-weight: 600; }
+.statsbar .up { color: hsl(var(--mint)); }
+.statsbar .down { color: hsl(var(--warning)); }
+.statsbar .violet { color: hsl(var(--primary)); }
+
+/* main grid: chart+gauge | book | console */
+.term-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px 360px;
+  gap: 10px;
+  align-items: stretch;
+}
+.term-grid .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.term-grid .card { border-radius: 12px; padding: 14px 16px; }
+.term-grid .card-head { margin-bottom: 4px; }
+.term-grid .card-head .title { font-size: 13.5px; }
+.term-grid .card-sub { font-size: 12px; margin-bottom: 10px; }
+
+/* compact gauge inside the terminal */
+.gauge-slim .card-sub { display: none; }
+.gauge-slim .gauge-track-wrap { padding: 10px 4px 2px; }
+.gauge-slim .gauge-readout { margin-top: 10px; }
+.gauge-slim .gauge-readout .big { font-size: 22px; }
+.gauge-slim .legs { margin-top: 10px; }
+.gauge-slim .leg-box { padding: 9px 12px; }
+.gauge-slim .leg-box .lb-v { font-size: 14.5px; }
+
+/* console column tweaks */
+.term-grid .fieldbox { padding: 11px 13px; margin-bottom: 8px; }
+.term-grid .fieldbox .fb-main { font-size: 20px; }
+.term-grid .btn { padding: 12px 18px; font-size: 14px; }
+.term-grid .spec { gap: 6px 14px; font-size: 10.5px; }
+
+/* book fills its column */
+.book-card { flex: 1; display: flex; flex-direction: column; }
+.book-card .ladder { flex: 1; }
+
+/* bottom tabs (positions/orders-style) */
+.bottom-panel {
+  margin-top: 10px;
+  border: 1px solid hsl(var(--border) / 0.8);
+  border-radius: 12px;
+  background: hsl(var(--glass-bg) / 0.55);
+  backdrop-filter: blur(16px) saturate(140%);
+  overflow: hidden;
+}
+.bottom-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  padding: 0 10px;
+  background: hsl(var(--secondary) / 0.35);
+}
+.bottom-tabs button {
+  background: transparent;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  padding: 11px 14px 9px;
+  border-bottom: 2px solid transparent;
+}
+.bottom-tabs button.active {
+  color: hsl(var(--foreground));
+  border-bottom-color: hsl(var(--primary));
+}
+.bottom-tabs .tab-meta {
+  margin-left: auto;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  padding-right: 6px;
+}
+.bottom-body { padding: 14px 16px; min-height: 190px; }
+.bottom-body .terminal { margin-bottom: 0; border: none; background: transparent; box-shadow: none; backdrop-filter: none; }
+.bottom-body .terminal .t-head { display: none; }
+.bottom-body .terminal .t-body { padding: 0; }
+.bottom-body .terminal .t-foot { padding: 10px 0 0; }
+
+.app footer {
+  border-top: none;
+  padding-top: 12px;
+  font-size: 11px;
+}
+
+@media (max-width: 1180px) {
+  .term-grid { grid-template-columns: minmax(0, 1fr) 320px; }
+  .term-grid .col.book-col { display: none; }
+}
+@media (max-width: 860px) {
+  .term-grid { grid-template-columns: 1fr; }
+  .term-grid .col.book-col { display: flex; }
+  .app .topbar .tagline { display: none; }
+}
