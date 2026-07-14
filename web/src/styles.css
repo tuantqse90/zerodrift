@@ -1537,3 +1537,8 @@ footer {
 .engine-mini .kv { padding: 8px 0; border-bottom: 1px solid hsl(var(--border) / 0.35); }
 .engine-mini .kv .k { font-size: 10px; letter-spacing: 0.04em; }
 .engine-mini .kv .mono { font-size: 13px; }
+
+/* fill the drift-gauge card evenly (it grows to match the tall right column) */
+.gauge-slim > .card { justify-content: space-between; }
+.gauge-slim .gauge-track-wrap { padding-top: 8px; }
+.gauge-slim .legs { margin-top: 0; }
