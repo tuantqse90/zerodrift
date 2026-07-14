@@ -264,7 +264,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                 0.0
               </span>
               <span className="fb-token">
-                <span className="dot" style={{ background: "hsl(var(--primary))" }} />
+                <img src="/mon.svg" className="coin" alt="" />
                 MON
               </span>
             </div>
@@ -276,7 +276,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                 0.0
               </span>
               <span className="fb-token">
-                <span className="dot" style={{ background: "hsl(var(--mint))" }} />
+                <img src="/mon.svg" className="coin" alt="" />
                 MON-PERP
               </span>
             </div>
@@ -336,7 +336,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                 <div className="fb-row">
                   <span className="fb-main mono">{monBalance.toFixed(1)}</span>
                   <span className="fb-token">
-                    <span className="dot" style={{ background: "hsl(var(--primary))" }} />
+                    <img src="/mon.svg" className="coin" alt="" />
                     MON
                   </span>
                 </div>
@@ -356,7 +356,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                     aria-label="Hedge size in MON"
                   />
                   <span className="fb-token">
-                    <span className="dot" style={{ background: "hsl(var(--mint))" }} />
+                    <img src="/mon.svg" className="coin" alt="" />
                     MON-PERP
                   </span>
                 </div>

@@ -3,7 +3,7 @@
 // API key by protocol design). Buffer-free: base64url/hex helpers inline.
 
 import { ed25519 } from "@noble/curves/ed25519";
-import { PERPL_CHAIN_ID, PERPL_WS, type PerplMarketInfo } from "./perplFeed";
+import { PERPL_API, PERPL_CHAIN_ID, PERPL_WS, type PerplMarketInfo } from "./perplFeed";
 
 export interface PerplKeys {
   apiKey: string;
@@ -64,10 +64,21 @@ export interface AccountView {
   balanceUsd: number;
   lockedUsd: number;
 }
+export interface AccountStats {
+  totalVolumeUsd: number;
+  realizedPnlUsd: number;
+  trades: number;
+  winRatePct: number;
+}
 
 function parseAmount(a: unknown): number {
   const n = typeof a === "number" ? a : Number(a ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -78,6 +89,7 @@ export class TradingSession {
   status: "connecting" | "ready" | "auth-failed" | "closed" = "connecting";
   position: Position = { side: "flat", sizeMon: 0, entryPx: 0 };
   account: AccountView | null = null;
+  stats: AccountStats | null = null;
   headBlock = 0;
   lastError = "";
   onChange: (() => void) | null = null;
@@ -196,6 +208,42 @@ export class TradingSession {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(frame));
   }
 
+  private applyStats(s: any): void {
+    this.stats = {
+      totalVolumeUsd: parseAmount(s.tv),
+      realizedPnlUsd: parseAmount(s.trp),
+      trades: Number(s.tt) || 0,
+      winRatePct: (Number(s.wr) || 0) / 100, // wr is bps
+    };
+  }
+
+  /**
+   * Signed REST GET for the user's own data (e.g. mPoints). Uses the Ed25519 key
+   * with Perpl's authed-REST canonical: chainId\nMETHOD\ntarget\nts\nnonce\nsha256(body).
+   * Returns parsed JSON or null. The points path/shape may vary — callers degrade.
+   */
+  async signedGet(target: string): Promise<any | null> {
+    try {
+      const timestamp = Date.now().toString();
+      const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)));
+      const bodyHash = await sha256Hex("");
+      const canonical = [PERPL_CHAIN_ID, "GET", target, timestamp, nonce, bodyHash].join("\n");
+      const sig = b64url(ed25519.sign(new TextEncoder().encode(canonical), this.edPriv));
+      const res = await fetch(`${PERPL_API}${target}`, {
+        headers: {
+          "X-API-Key": this.keys.apiKey,
+          "X-API-Timestamp": timestamp,
+          "X-API-Nonce": nonce,
+          "X-API-Signature": sig,
+        },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
   private connect(): void {
     if (this.stopped) return;
     this.status = "connecting";
@@ -250,11 +298,17 @@ export class TradingSession {
           this.nextRq = Math.max(this.nextRq, Number(acc.lfr) || 0);
           this.account = { id: acc.id, balanceUsd: parseAmount(acc.b), lockedUsd: parseAmount(acc.lb) };
         }
+        const st = (msg.sts ?? [])[0];
+        if (st) this.applyStats(st);
         this.retry = 0;
         this.status = "ready";
         this.onChange?.();
         break;
       }
+      case 28:
+        this.applyStats(msg);
+        this.onChange?.();
+        break;
       case 21:
         if (this.account && msg.id === this.account.id) {
           this.nextRq = Math.max(this.nextRq, Number(msg.lfr) || 0);

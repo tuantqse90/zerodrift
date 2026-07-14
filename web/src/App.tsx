@@ -7,6 +7,7 @@ import { EpochHistory } from "./components/EpochHistory";
 import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { HistorySpark } from "./components/HistorySpark";
+import { Portfolio } from "./components/Portfolio";
 import { PriceChart, candleStats, useCandles } from "./components/PriceChart";
 import { RecentTrades } from "./components/RecentTrades";
 import type { Trade } from "./lib/perplFeed";
@@ -65,7 +66,7 @@ export default function App() {
   const [epochsLoading, setEpochsLoading] = useState(true);
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
-  const [tab, setTab] = useState<"engine" | "epochs" | "estimator">("engine");
+  const [tab, setTab] = useState<"portfolio" | "engine" | "epochs" | "estimator">("engine");
   const [feedState, setFeedState] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
@@ -219,7 +220,7 @@ export default function App() {
 
       <div className="statsbar" aria-label="Live market stats">
         <span className="pair">
-          <span className="dot" />
+          <img src="/mon.svg" className="coin" alt="" />
           MON-PERP
         </span>
         <span>
@@ -278,7 +279,7 @@ export default function App() {
           <section className="card glass">
             <div className="card-head">
               <span className="title">
-                <i />
+                <img src="/mon.svg" className="coin sm" alt="" />
                 MON-perp
               </span>
               <span className="tf-btns" role="tablist" aria-label="Timeframe">
@@ -435,6 +436,9 @@ export default function App() {
 
       <div className="bottom-panel">
         <div className="bottom-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "portfolio"} className={tab === "portfolio" ? "active" : ""} onClick={() => setTab("portfolio")}>
+            MY PORTFOLIO
+          </button>
           <button role="tab" aria-selected={tab === "engine"} className={tab === "engine" ? "active" : ""} onClick={() => setTab("engine")}>
             ENGINE LOG
           </button>
@@ -445,19 +449,25 @@ export default function App() {
             POINTS ESTIMATOR
           </button>
           <span className="tab-meta">
-            {tab === "engine"
-              ? engine
-                ? `paper session · live mainnet data · ${engine.state}`
-                : "connecting…"
-              : tab === "estimator"
-                ? "live fees · funding · boost"
-                : latestEpoch
-                  ? `latest: #${latestEpoch.epochId} · ${latestEpoch.closed ? "closed" : "open"} · ${ago(latestEpoch.openedAt)}`
-                  : "HedgeRegistry"}
+            {tab === "portfolio"
+              ? session?.status === "ready"
+                ? "your live account · Perpl"
+                : "connect a key to see yours"
+              : tab === "engine"
+                ? engine
+                  ? `paper session · live mainnet data · ${engine.state}`
+                  : "connecting…"
+                : tab === "estimator"
+                  ? "live fees · funding · boost"
+                  : latestEpoch
+                    ? `latest: #${latestEpoch.epochId} · ${latestEpoch.closed ? "closed" : "open"} · ${ago(latestEpoch.openedAt)}`
+                    : "HedgeRegistry"}
           </span>
         </div>
         <div className="bottom-body">
-          {tab === "engine" ? (
+          {tab === "portfolio" ? (
+            <Portfolio session={session} mark={mid} />
+          ) : tab === "engine" ? (
             <EngineTerminal status={engine} />
           ) : tab === "estimator" ? (
             <Estimator market={market} fundingApr={fundingApr} />
