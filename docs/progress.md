@@ -83,3 +83,12 @@
 - Smoke: epoch #0 opened (tx 0xa0538ac2…) + closed on-chain, EpochOpened event verified.
 - Source verified on Sourcify: **exact_match** (visible on monadscan).
 - Deployer: relayer wallet (contract is ownerless — deployer has no special rights).
+
+## Day 1 (cont.) — SITE LIVE 🚀
+
+**https://hedge.nullterminal.xyz LIVE** (2026-07-14)
+- DNS via owner-supplied CF token: A `hedge` → VPS, grey-cloud → cert issued → flipped
+  orange-cloud (origin hidden, serves via CF edge). Record id c62fa9fd…, TTL auto.
+- Verified through the full production chain: HTTPS 200, `/perpl` REST proxy 200, and
+  the market-data WS through Cloudflare → Caddy → Perpl (book snapshot received).
+- Production screenshot: live book, funding +17.5% APR (shorts earn), 2x boost, epochs.
