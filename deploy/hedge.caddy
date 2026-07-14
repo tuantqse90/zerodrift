@@ -1,0 +1,19 @@
+# hedge.nullterminal.xyz — ZeroDrift (append to /etc/caddy/conf.d/ on the VPS).
+# /perpl/* is a same-origin reverse proxy to Perpl: the upstream rejects foreign
+# browser Origins on REST (no CORS) and WS (1002), so we rewrite Origin here.
+# Validate before reload: caddy validate --config /etc/caddy/Caddyfile
+
+hedge.nullterminal.xyz {
+	encode gzip zstd
+
+	handle_path /perpl/* {
+		reverse_proxy https://app.perpl.xyz {
+			header_up Host app.perpl.xyz
+			header_up Origin https://app.perpl.xyz
+		}
+	}
+
+	handle {
+		reverse_proxy localhost:8422
+	}
+}

@@ -1,0 +1,323 @@
+// perplTrading.ts — browser port of the authenticated Perpl trading client.
+// Keys live in localStorage only (trade scope; withdrawals are impossible via
+// API key by protocol design). Buffer-free: base64url/hex helpers inline.
+
+import { ed25519 } from "@noble/curves/ed25519";
+import { PERPL_CHAIN_ID, PERPL_WS, type PerplMarketInfo } from "./perplFeed";
+
+export interface PerplKeys {
+  apiKey: string;
+  edPrivHex: string;
+}
+
+const LS_KEY = "zerodrift.perpl-keys";
+
+export function loadKeys(): PerplKeys | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const k = JSON.parse(raw) as PerplKeys;
+    return k.apiKey && k.edPrivHex ? k : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveKeys(k: PerplKeys): void {
+  localStorage.setItem(LS_KEY, JSON.stringify(k));
+}
+
+export function clearKeys(): void {
+  localStorage.removeItem(LS_KEY);
+}
+
+function b64url(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+export type PerpSide = "short-open" | "short-close" | "long-open" | "long-close";
+const ORDER_TYPE: Record<PerpSide, number> = { "long-open": 1, "short-open": 2, "long-close": 3, "short-close": 4 };
+
+export interface FillEvent {
+  oid: number;
+  px: number;
+  sz: number;
+  feeUsd: number;
+  maker: boolean;
+}
+export interface Position {
+  side: "short" | "long" | "flat";
+  sizeMon: number;
+  entryPx: number;
+}
+export interface AccountView {
+  id: number;
+  balanceUsd: number;
+  lockedUsd: number;
+}
+
+function parseAmount(a: unknown): number {
+  const n = typeof a === "number" ? a : Number(a ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Authenticated trading session over /ws/v1/trading. One market. Emits state
+ * changes through onChange; callers read .position/.account/.status.
+ */
+export class TradingSession {
+  status: "connecting" | "ready" | "auth-failed" | "closed" = "connecting";
+  position: Position = { side: "flat", sizeMon: 0, entryPx: 0 };
+  account: AccountView | null = null;
+  headBlock = 0;
+  lastError = "";
+  onChange: (() => void) | null = null;
+  onFill: ((f: FillEvent) => void) | null = null;
+
+  /** Resting orders on this market, by oid. */
+  openOrders = new Map<number, { oid: number; rq: number; px: number; remaining: number; type: number }>();
+
+  private ws: WebSocket | null = null;
+  private nextRq = 0;
+  private lastSn: number | undefined;
+  private stopped = false;
+  private retry = 0;
+  private pingTimer: number | null = null;
+  private edPriv: Uint8Array;
+
+  constructor(
+    private readonly market: PerplMarketInfo,
+    private readonly keys: PerplKeys,
+    private readonly leverageHundredths = 200,
+  ) {
+    this.edPriv = hexToBytes(keys.edPrivHex);
+  }
+
+  start(): void {
+    this.stopped = false;
+    this.connect();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.ws?.close();
+    this.status = "closed";
+  }
+
+  get ready(): boolean {
+    return this.status === "ready" && this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  private scalePx(px: number): number {
+    return Math.round(px * 10 ** this.market.priceDecimals);
+  }
+  private scaleSz(sz: number): number {
+    return Math.round(sz * 10 ** this.market.sizeDecimals);
+  }
+
+  private lb(): number {
+    return this.headBlock + Math.max(2, this.market.orderTtlBlocks - 5);
+  }
+
+  private takeRq(): number {
+    this.nextRq += 1;
+    return this.nextRq;
+  }
+
+  /** PostOnly maker order joined at px. Returns rq for correlation. */
+  placeMaker(side: PerpSide, px: number, sizeMon: number): number {
+    if (!this.ready) throw new Error("session not ready");
+    const rq = this.takeRq();
+    this.send({
+      mt: 22,
+      rq,
+      mkt: this.market.id,
+      acc: this.account?.id ?? 0,
+      t: ORDER_TYPE[side],
+      p: this.scalePx(px),
+      s: this.scaleSz(sizeMon),
+      fl: 1,
+      lv: this.leverageHundredths,
+      lb: this.lb(),
+    });
+    return rq;
+  }
+
+  placeTaker(side: PerpSide, sizeMon: number, slippageBps: number): number {
+    if (!this.ready) throw new Error("session not ready");
+    const rq = this.takeRq();
+    this.send({
+      mt: 22,
+      rq,
+      mkt: this.market.id,
+      acc: this.account?.id ?? 0,
+      t: ORDER_TYPE[side],
+      p: 0,
+      s: this.scaleSz(sizeMon),
+      ms: slippageBps,
+      fl: 4,
+      lv: this.leverageHundredths,
+      lb: this.lb(),
+    });
+    return rq;
+  }
+
+  cancel(oid: number): void {
+    if (!this.ready) return;
+    this.send({
+      mt: 22,
+      rq: this.takeRq(),
+      mkt: this.market.id,
+      acc: this.account?.id ?? 0,
+      oid,
+      t: 5,
+      s: 0,
+      fl: 0,
+      lv: 0,
+      lb: this.lb(),
+    });
+  }
+
+  cancelAllMine(): void {
+    for (const o of this.openOrders.values()) this.cancel(o.oid);
+  }
+
+  private send(frame: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(frame));
+  }
+
+  private connect(): void {
+    if (this.stopped) return;
+    this.status = "connecting";
+    const ws = new WebSocket(`${PERPL_WS}/ws/v1/trading`);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      const timestamp = Date.now().toString();
+      const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)));
+      const canonical = [PERPL_CHAIN_ID, "trading-ws-signin", timestamp, nonce].join("\n");
+      const signature = b64url(ed25519.sign(new TextEncoder().encode(canonical), this.edPriv));
+      ws.send(
+        JSON.stringify({ mt: 29, chain_id: PERPL_CHAIN_ID, api_key: this.keys.apiKey, timestamp, nonce, signature }),
+      );
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      this.pingTimer = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ mt: 1, t: Date.now() }));
+      }, 25_000);
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        this.handle(JSON.parse(String(ev.data)));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    ws.onclose = (ev) => {
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      if (ev.code === 3401) {
+        this.status = "auth-failed";
+        this.lastError = "Key rejected (3401). Check the token and private key.";
+        this.onChange?.();
+        return; // don't hammer a bad key
+      }
+      if (!this.stopped) {
+        const delay = Math.min(1000 * 2 ** this.retry, 30_000);
+        this.retry += 1;
+        setTimeout(() => this.connect(), delay);
+      }
+    };
+    ws.onerror = () => ws.close();
+  }
+
+  private handle(msg: any): void {
+    switch (msg.mt) {
+      case 19: {
+        this.lastSn = typeof msg.sn === "number" ? msg.sn : undefined;
+        const acc = (msg.as ?? [])[0];
+        if (acc) {
+          this.nextRq = Math.max(this.nextRq, Number(acc.lfr) || 0);
+          this.account = { id: acc.id, balanceUsd: parseAmount(acc.b), lockedUsd: parseAmount(acc.lb) };
+        }
+        this.retry = 0;
+        this.status = "ready";
+        this.onChange?.();
+        break;
+      }
+      case 21:
+        if (this.account && msg.id === this.account.id) {
+          this.nextRq = Math.max(this.nextRq, Number(msg.lfr) || 0);
+          this.account = { id: msg.id, balanceUsd: parseAmount(msg.b), lockedUsd: parseAmount(msg.lb) };
+          this.onChange?.();
+        }
+        break;
+      case 23:
+      case 24:
+        for (const o of msg.d ?? []) {
+          if (o.mkt !== this.market.id || o.oid === undefined) continue;
+          if (o.r === true) {
+            this.openOrders.delete(o.oid);
+          } else if ((o.st ?? 0) === 2 || (o.st ?? 0) === 3) {
+            this.openOrders.set(o.oid, {
+              oid: o.oid,
+              rq: o.rq,
+              px: (o.p ?? 0) / 10 ** this.market.priceDecimals,
+              remaining: ((o.os ?? 0) - (o.fs ?? 0)) / 10 ** this.market.sizeDecimals,
+              type: o.t,
+            });
+          }
+        }
+        this.onChange?.();
+        break;
+      case 25:
+        for (const f of msg.d ?? []) {
+          if (f.mkt !== this.market.id) continue;
+          this.onFill?.({
+            oid: f.oid,
+            px: (f.p ?? 0) / 10 ** this.market.priceDecimals,
+            sz: (f.s ?? 0) / 10 ** this.market.sizeDecimals,
+            feeUsd: parseAmount(f.f),
+            maker: f.l === 1,
+          });
+        }
+        break;
+      case 26:
+      case 27:
+        for (const p of msg.d ?? []) {
+          if (p.mkt !== this.market.id) continue;
+          if ((p.st ?? 0) === 1) {
+            this.position = {
+              side: p.sd === 2 ? "short" : p.sd === 1 ? "long" : "flat",
+              sizeMon: (p.s ?? 0) / 10 ** this.market.sizeDecimals,
+              entryPx: (p.ep ?? 0) / 10 ** this.market.priceDecimals,
+            };
+          } else {
+            this.position = { side: "flat", sizeMon: 0, entryPx: 0 };
+          }
+          this.onChange?.();
+        }
+        break;
+      case 100:
+        if (typeof msg.h === "number") this.headBlock = msg.h;
+        if (typeof msg.sn === "number") {
+          if (this.lastSn !== undefined && msg.sn !== this.lastSn + 1) {
+            this.ws?.close();
+            return;
+          }
+          this.lastSn = msg.sn;
+        }
+        break;
+    }
+  }
+}
