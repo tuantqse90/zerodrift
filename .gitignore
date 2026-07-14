@@ -1,0 +1,10 @@
+node_modules/
+bot/data/
+contracts/out/
+contracts/cache/
+web/dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

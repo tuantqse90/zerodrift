@@ -1,0 +1,19 @@
+{
+  "name": "zerodrift-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hedger": "bun run src/hedger/run.ts",
+    "hedger:enroll": "bun run src/hedger/enroll.ts",
+    "hedger:bootstrap": "bun run src/hedger/bootstrap-account.ts",
+    "probe:testnet": "bun run src/hedger/probe-testnet.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.8.0",
+    "viem": "^2.8.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14"
+  }
+}
