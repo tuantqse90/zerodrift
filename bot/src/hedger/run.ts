@@ -128,7 +128,13 @@ async function main(): Promise<void> {
   // durable "hedged" state but a flat executor. Re-open the short from SPOT_FILLED
   // instead of tripping the delta guard. (Live mode rebuilds the position from the
   // Perpl snapshot, so this only affects paper.)
-  if (!CFG.live && (state.state === "HEDGED" || state.state === "CHURNING" || state.state === "REBALANCING")) {
+  if (
+    !CFG.live &&
+    (state.state === "HEDGED" ||
+      state.state === "CHURNING" ||
+      state.state === "REBALANCING" ||
+      state.state === "PAUSED_FUNDING")
+  ) {
     transition(state, "SPOT_FILLED", "paper restart — re-establishing short from durable spot state");
   }
 
@@ -231,12 +237,11 @@ async function main(): Promise<void> {
               transition(state, "REBALANCING", `delta ${deltaPct.toFixed(2)}% > hard (AS safety)`);
               break;
             }
-            if (funding.shouldPause()) {
-              await asStrategy.flatten(exec);
-              transition(state, "PAUSED_FUNDING", `paying ${(-funding.earnAprPct()).toFixed(1)}% APR > ${CFG.fundingPauseApr}%`);
-              void alertOnce("ph:funding-pause", 3600_000, `⏸ AS paused: funding ${funding.earnAprPct().toFixed(1)}% APR`);
-              break;
-            }
+            // NB: no funding pause here (unlike churn). AS earns the bid-ask spread,
+            // and the hedge holds the short at target regardless — so funding is a sunk
+            // carry either way; pausing would only forfeit spread capture. Spread edge
+            // (~2bps/pair) dwarfs the clamped ±17.5% APR funding per fill, so we quote
+            // through it.
             await asStrategy.tick({
               book,
               mid,
@@ -365,6 +370,12 @@ async function main(): Promise<void> {
         }
 
         case "PAUSED_FUNDING": {
+          // AS never funding-pauses (it earns spread) — release immediately, e.g. after
+          // a restart that loaded a churn-era paused snapshot.
+          if (CFG.strategy === "avellaneda") {
+            transition(state, "HEDGED", "AS resumes — quotes through funding");
+            break;
+          }
           if (deltaPct > CFG.deltaSoftPct) {
             transition(state, "REBALANCING", `delta ${deltaPct.toFixed(2)}% while paused`);
             break;
