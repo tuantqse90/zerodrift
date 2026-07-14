@@ -95,8 +95,10 @@ export const HEDGER_CONFIG: HedgerConfig = {
   asMaxHalfBps: envNum("HEDGER_AS_MAX_HALF_BPS", 25),
   asMaxSkewBps: envNum("HEDGER_AS_MAX_SKEW_BPS", 8),
   asRepriceBps: envNum("HEDGER_AS_REPRICE_BPS", 1.5),
-  asClipFrac: envNum("HEDGER_AS_CLIP_FRAC", 0.15),
-  asInvBandFrac: envNum("HEDGER_AS_INV_BAND_FRAC", 0.03),
+  // Clip MUST stay below (hard − band) so a single fill can't vault the inventory band
+  // into the hard-delta guard. 0.15 was a footgun (one fill = 15% delta jump).
+  asClipFrac: envNum("HEDGER_AS_CLIP_FRAC", 0.03),
+  asInvBandFrac: envNum("HEDGER_AS_INV_BAND_FRAC", 0.02),
   deltaSoftPct: envNum("HEDGER_DELTA_SOFT_PCT", 1),
   deltaHardPct: envNum("HEDGER_DELTA_HARD_PCT", 3),
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,

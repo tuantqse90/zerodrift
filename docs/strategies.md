@@ -50,15 +50,23 @@ docker run -d --name zd-hedger --network host --restart unless-stopped \
   -e MONAD_RPC_URL=https://rpc.monad.xyz \
   oven/bun:1-alpine bun run hedger
 
-# avellaneda bot (own status feed + own data dir)
+# avellaneda bot (own status feed + own data dir; tight-inventory tuning)
 docker run -d --name zd-hedger-as --network host --restart unless-stopped \
   -v /opt/zerodrift:/opt/zerodrift -w /opt/zerodrift/bot \
   -e HEDGER_STRATEGY=avellaneda \
   -e HEDGER_STATUS_FILE=/opt/zerodrift/status/status-avellaneda.json \
   -e HEDGER_DATA_DIR=/opt/zerodrift/bot/data-avellaneda \
+  -e HEDGER_AS_INV_BAND_FRAC=0.015 \
+  -e HEDGER_AS_CLIP_FRAC=0.012 \
+  -e HEDGER_LOOP_MS=1500 \
   -e MONAD_RPC_URL=https://rpc.monad.xyz \
   oven/bun:1-alpine bun run hedger
 ```
+
+Inventory-control rule of thumb: `AS_CLIP_FRAC < AS_INV_BAND_FRAC < deltaHardPct`, so a
+single fill can't vault the band into the hard-delta guard, and the band pulls the
+offending side before a fast move breaches. A shorter `HEDGER_LOOP_MS` reprices sooner
+(reacts faster in volatile markets) at the cost of more order churn.
 
 Redeploy code: `rsync -az bot/src/ root@<VPS>:/opt/zerodrift/bot/src/` then
 `docker restart zd-hedger zd-hedger-as` (bun runs the source directly — no build step).
