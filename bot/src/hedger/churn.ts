@@ -1,11 +1,10 @@
-// churn.ts — volume oscillation. Every churn interval, close a fraction of the
-// perp short with a PostOnly maker order, then re-open the same size — two maker
-// fills of volume per cycle at ~0.9bps each, delta drift bounded by the fraction.
-// Fraction is jittered ±20% so the pattern doesn't look robotic (wash-flag risk).
+// churn.ts — volume oscillation mechanism. Closes a clip of the perp short with a
+// PostOnly maker order, then re-opens the same size — two maker fills of volume per
+// cycle at ~0.9bps each. The clip SIZE and TIMING are decided by ChurnPolicy (the
+// funding-adaptive, depth-aware market-maker brain); this class just executes it.
 
 import type { PerplBook } from "../lib/perpl";
 import type { FillEvent, PerplExecutor } from "../lib/perpl-trade";
-import { HEDGER_CONFIG } from "./config";
 import { MakerWorker } from "./maker";
 
 type Phase = "idle" | "closing" | "reopening";
@@ -13,11 +12,10 @@ type Phase = "idle" | "closing" | "reopening";
 export class Churner {
   private phase: Phase = "idle";
   private worker: MakerWorker | null = null;
-  // Seeded to "now" so the FIRST churn waits a full interval after boot/hedge —
-  // opening the hedge already generated volume this cycle.
-  private lastCycleAt = Date.now();
   private cycleSz = 0;
   roundTrips = 0;
+  /** Cumulative maker notional churned (USD), for realized efficiency telemetry. */
+  churnedVolumeUsd = 0;
 
   get active(): boolean {
     return this.phase !== "idle";
@@ -34,23 +32,18 @@ export class Churner {
     return 0;
   }
 
-  due(): boolean {
-    return Date.now() - this.lastCycleAt >= HEDGER_CONFIG.churnIntervalMs;
-  }
-
   handleFill(f: FillEvent): void {
     this.worker?.handleFill(f);
+    // Every maker fill during a churn cycle is booked as churned volume.
+    if (this.phase !== "idle") this.churnedVolumeUsd += f.px * f.sz;
   }
 
-  /** Start a close→reopen cycle for a jittered fraction of the current short. */
-  start(currentShortMon: number): void {
-    if (this.phase !== "idle" || currentShortMon <= 0) return;
-    const jitter = 0.8 + Math.random() * 0.4; // ±20%
-    this.cycleSz = currentShortMon * HEDGER_CONFIG.churnFraction * jitter;
-    if (this.cycleSz <= 0) return;
+  /** Start a close→reopen cycle for the policy-decided clip (jitter already applied). */
+  start(clipMon: number): void {
+    if (this.phase !== "idle" || clipMon <= 0) return;
+    this.cycleSz = clipMon;
     this.phase = "closing";
     this.worker = null;
-    this.lastCycleAt = Date.now();
   }
 
   async abort(): Promise<void> {

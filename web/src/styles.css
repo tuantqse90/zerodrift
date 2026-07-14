@@ -1126,3 +1126,19 @@ footer {
 .term-grid .card { transition: border-color 0.18s, box-shadow 0.18s; }
 .term-grid .card:hover { border-color: hsl(var(--border)); }
 .mark-price { transition: color 0.2s; }
+
+/* ── churn intensity badge (funding-adaptive strategy state) ────────────── */
+.intensity-badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.intensity-badge.i-aggressive { color: hsl(var(--mint)); border-color: hsl(var(--mint) / 0.5); background: hsl(var(--mint) / 0.1); }
+.intensity-badge.i-normal { color: hsl(var(--primary)); border-color: hsl(var(--primary) / 0.5); background: hsl(var(--primary) / 0.08); }
+.intensity-badge.i-light, .intensity-badge.i-waiting, .intensity-badge.i-guard { color: hsl(var(--warning)); border-color: hsl(var(--warning) / 0.4); background: hsl(var(--warning) / 0.07); }
+.intensity-badge.i-paused, .intensity-badge.i-thin-book { color: hsl(var(--muted-foreground)); border-color: hsl(var(--border)); }

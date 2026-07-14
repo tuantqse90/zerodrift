@@ -10,6 +10,16 @@ export interface HedgerConfig {
   leverage: number;
   churnIntervalMs: number;
   churnFraction: number;
+  /** Adaptive churn: hard cap on the per-cycle clip as a fraction of the short. */
+  churnMaxFraction: number;
+  /** Adaptive churn: floor on the interval when funding lets us churn aggressively. */
+  churnMinIntervalMs: number;
+  /** Funding APR (earned by shorts) above which churn goes aggressive. */
+  fundingBoostApr: number;
+  /** Clip is capped to this fraction of top-of-book depth so it fills fast (throughput). */
+  churnDepthCapPct: number;
+  /** Skip starting a churn within this window before funding settlement (keep full short). */
+  fundingSettleGuardSec: number;
   deltaSoftPct: number;
   deltaHardPct: number;
   /** +1: rate>0 ⇒ longs pay shorts (we earn on our short). Flip to -1 if proven inverted. */
@@ -39,6 +49,11 @@ export const HEDGER_CONFIG: HedgerConfig = {
   leverage: envNum("HEDGER_LEVERAGE", 200),
   churnIntervalMs: envNum("HEDGER_CHURN_INTERVAL_MS", 900_000),
   churnFraction: envNum("HEDGER_CHURN_FRACTION", 0.25),
+  churnMaxFraction: envNum("HEDGER_CHURN_MAX_FRACTION", 0.5),
+  churnMinIntervalMs: envNum("HEDGER_CHURN_MIN_INTERVAL_MS", 300_000),
+  fundingBoostApr: envNum("HEDGER_FUNDING_BOOST_APR", 10),
+  churnDepthCapPct: envNum("HEDGER_CHURN_DEPTH_CAP_PCT", 0.5),
+  fundingSettleGuardSec: envNum("HEDGER_FUNDING_SETTLE_GUARD_SEC", 120),
   deltaSoftPct: envNum("HEDGER_DELTA_SOFT_PCT", 1),
   deltaHardPct: envNum("HEDGER_DELTA_HARD_PCT", 3),
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,

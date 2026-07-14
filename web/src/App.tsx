@@ -235,6 +235,11 @@ export default function App() {
           <span className="t-val">
             {engine ? `${engine.state} · ${engine.roundTrips} RT · $${engine.weekVolumeUsd.toFixed(0)} wk` : "—"}
           </span>
+          {engine?.churnIntensity ? (
+            <span className={`intensity-badge i-${engine.churnIntensity}`} style={{ marginLeft: 7 }}>
+              {engine.churnIntensity}
+            </span>
+          ) : null}
         </span>
         <span>
           <span className="t-label">BLOCK</span>
@@ -344,23 +349,37 @@ export default function App() {
                   <span className="k">STATE</span>
                   <span className="mono v-mint">{engine.state}</span>
                 </div>
+                {engine.churnIntensity && (
+                  <div className="kv">
+                    <span className="k">STRATEGY</span>
+                    <span className={`intensity-badge i-${engine.churnIntensity}`}>{engine.churnIntensity}</span>
+                  </div>
+                )}
                 <div className="kv">
                   <span className="k">ROUND TRIPS</span>
                   <span className="mono">{engine.roundTrips}</span>
                 </div>
                 <div className="kv">
-                  <span className="k">WEEK VOLUME</span>
-                  <span className="mono v-mint">${engine.weekVolumeUsd.toFixed(2)}</span>
-                </div>
-                <div className="kv">
-                  <span className="k">FEES PAID</span>
-                  <span className="mono">${(engine.makerFeesUsd + engine.takerFeesUsd).toFixed(4)}</span>
+                  <span className="k">BOOSTED VOL</span>
+                  <span className="mono v-mint">
+                    ${(engine.boostedVolumeUsd ?? engine.weekVolumeUsd * 2).toFixed(0)}
+                  </span>
                 </div>
                 <div className="kv">
                   <span className="k">FUNDING</span>
                   <span className={`mono ${engine.fundingAprPct >= 0 ? "v-mint" : "v-warn"}`}>
                     {engine.fundingAprPct >= 0 ? "+" : ""}
                     {engine.fundingAprPct.toFixed(1)}% APR
+                  </span>
+                </div>
+                <div className="kv">
+                  <span className="k">COST / $1K VOL</span>
+                  <span className="mono">
+                    {engine.costPer1kBoostedUsd != null
+                      ? engine.costPer1kBoostedUsd <= 0
+                        ? "FREE"
+                        : `$${engine.costPer1kBoostedUsd.toFixed(3)}`
+                      : "—"}
                   </span>
                 </div>
                 {engine.history && engine.history.length > 1 && (

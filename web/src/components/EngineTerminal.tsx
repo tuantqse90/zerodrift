@@ -34,6 +34,10 @@ export interface EngineStatus {
   takerFeesUsd: number;
   fundingUsd: number;
   fundingAprPct: number;
+  churnIntensity?: string;
+  boostedVolumeUsd?: number;
+  netCostUsd?: number;
+  costPer1kBoostedUsd?: number;
   config?: {
     leverageX: number;
     churnMin: number;

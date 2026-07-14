@@ -17,6 +17,7 @@ import {
 import { alertOnce, announceOnlineOnce, sendTelegram } from "../lib/telegram";
 import { PERPL_CHAIN_ID } from "../lib/config";
 import { Churner } from "./churn";
+import { ChurnPolicy, type ChurnIntensity } from "./churn-policy";
 import { HEDGER_CONFIG as CFG } from "./config";
 import { FundingMonitor } from "./funding";
 import { MakerWorker } from "./maker";
@@ -47,6 +48,8 @@ async function main(): Promise<void> {
   const funding = new FundingMonitor(market);
   const state = loadState();
   const churner = new Churner();
+  const churnPolicy = new ChurnPolicy(market.fundingIntervalSec);
+  let churnIntensity: ChurnIntensity = "waiting";
 
   const feed = new PerplFeed(market, (ev: PerplFundingEvent) => {
     if (ev.marketId !== market.id) return;
@@ -210,9 +213,18 @@ async function main(): Promise<void> {
             void alertOnce("ph:funding-pause", 3600_000, `⏸ churn paused: funding ${funding.earnAprPct().toFixed(1)}% APR (raw rate ${funding.raw()?.rateMicros}µ)`);
             break;
           }
-          if (churner.due() && shortMon > 0) {
-            churner.start(shortMon);
-            transition(state, "CHURNING", `round-trip #${churner.roundTrips + 1}`);
+          {
+            const decision = churnPolicy.decide(shortMon, book, funding.earnAprPct(), Date.now(), Math.random());
+            churnIntensity = decision.intensity;
+            if (decision.churn) {
+              churner.start(decision.clipMon);
+              churnPolicy.markCycled(Date.now());
+              transition(
+                state,
+                "CHURNING",
+                `round-trip #${churner.roundTrips + 1} · clip ${decision.clipMon.toFixed(0)} MON · ${decision.reason}`,
+              );
+            }
           }
           break;
         }
@@ -333,6 +345,20 @@ async function main(): Promise<void> {
         takerFeesUsd: Number(pnl.takerFeesUsd.toFixed(4)),
         fundingUsd: Number(pnl.fundingUsd.toFixed(4)),
         fundingAprPct: Number(funding.earnAprPct().toFixed(2)),
+        // Hedge-desk KPIs: boosted volume farmed + realized cost per $1k of it.
+        churnIntensity,
+        boostedVolumeUsd: Number((pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000)).toFixed(2)),
+        netCostUsd: Number((pnl.makerFeesUsd + pnl.takerFeesUsd + pnl.gasUsd - pnl.fundingUsd).toFixed(4)),
+        costPer1kBoostedUsd:
+          pnl.perpVolumeUsd > 0
+            ? Number(
+                (
+                  (Math.max(0, pnl.makerFeesUsd + pnl.takerFeesUsd + pnl.gasUsd - pnl.fundingUsd) /
+                    (pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000))) *
+                  1000
+                ).toFixed(4),
+              )
+            : 0,
         config: {
           leverageX: CFG.leverage / 100,
           churnMin: CFG.churnIntervalMs / 60_000,
