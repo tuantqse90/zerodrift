@@ -79,6 +79,19 @@ async function main(): Promise<void> {
     : new PaperPerplExecutor(market, feed);
   await exec.start();
 
+  // Funding-sign auto-verify (live): a realized funding credit that contradicts the
+  // assumed sign would invert the pause logic — alert loudly if it ever happens.
+  funding.onInverted = () =>
+    void alertOnce(
+      "ph:funding-sign",
+      3600_000,
+      `🚨 ZeroDrift: funding sign appears INVERTED vs HEDGER_FUNDING_SIGN — pause logic may be backwards. Verify and flip the env.`,
+    );
+  exec.onFundingCredit((usd) => {
+    funding.observeCredit(usd);
+    pushEvent("info", `funding settlement ${usd >= 0 ? "+" : ""}$${usd.toFixed(4)} · sign ${funding.signStatus}`);
+  });
+
   // One fill stream feeds everything: ledger, workers, churner.
   let hedgeWorker: MakerWorker | null = null;
   let rebalanceWorker: MakerWorker | null = null;
@@ -345,6 +358,7 @@ async function main(): Promise<void> {
         takerFeesUsd: Number(pnl.takerFeesUsd.toFixed(4)),
         fundingUsd: Number(pnl.fundingUsd.toFixed(4)),
         fundingAprPct: Number(funding.earnAprPct().toFixed(2)),
+        fundingSignStatus: funding.signStatus,
         // Hedge-desk KPIs: boosted volume farmed + realized cost per $1k of it.
         churnIntensity,
         boostedVolumeUsd: Number((pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000)).toFixed(2)),

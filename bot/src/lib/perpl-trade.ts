@@ -93,6 +93,8 @@ export interface PerplExecutor {
   /** Cancel every active intent (and any live resting orders). */
   cancelAll(): Promise<void>;
   onFill(cb: (f: FillEvent) => void): void;
+  /** Realized funding credit at a settlement (live only; paper never fires). */
+  onFundingCredit(cb: (usd: number) => void): void;
   position(): PerpPosition;
   account(): AccountView | null;
   /** Latest known head block (live: from heartbeats; paper: 0). */
@@ -175,6 +177,8 @@ export class LivePerplExecutor implements PerplExecutor {
   private intentByOid = new Map<number, MakerIntent>();
   private seenFillKeys = new Set<string>();
   private fillCbs: Array<(f: FillEvent) => void> = [];
+  private fundingCbs: Array<(usd: number) => void> = [];
+  private seenFundingKeys = new Set<string>();
 
   private readonly maxRepostsPerMin = envNum("HEDGER_MAX_REPOSTS_PER_MIN", 30);
   /** Safety margin subtracted from order_ttl_blocks when setting lb. */
@@ -212,6 +216,10 @@ export class LivePerplExecutor implements PerplExecutor {
 
   onFill(cb: (f: FillEvent) => void): void {
     this.fillCbs.push(cb);
+  }
+
+  onFundingCredit(cb: (usd: number) => void): void {
+    this.fundingCbs.push(cb);
   }
 
   position(): PerpPosition {
@@ -505,6 +513,15 @@ export class LivePerplExecutor implements PerplExecutor {
           if (this.accountId === 0 && typeof msg.id === "number") this.accountId = msg.id;
           this.nextRq = Math.max(this.nextRq, Number(msg.lfr) || 0);
           this.balance = { balanceUsd: parseAmount(msg.b), lockedUsd: parseAmount(msg.lb) };
+          // Realized funding settlements (AccountEventType 8) → funding-sign verification.
+          for (const e of msg.h ?? []) {
+            if (e?.et !== 8) continue;
+            const key = `${e.at?.b ?? 0}-${e.at?.tx ?? 0}-${e.at?.l ?? 0}`;
+            if (this.seenFundingKeys.has(key)) continue;
+            this.seenFundingKeys.add(key);
+            const credit = parseAmount(e.a);
+            for (const cb of this.fundingCbs) cb(credit);
+          }
         }
         break;
       }
@@ -663,6 +680,9 @@ export class PaperPerplExecutor implements PerplExecutor {
   onFill(cb: (f: FillEvent) => void): void {
     this.fillCbs.push(cb);
   }
+
+  // Paper mode never realizes on-chain funding settlements.
+  onFundingCredit(_cb: (usd: number) => void): void {}
 
   position(): PerpPosition {
     return this.pos;

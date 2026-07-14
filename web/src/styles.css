@@ -1305,3 +1305,9 @@ footer {
   .g-num { padding-top: 0; }
   .guide-link { display: none; }
 }
+
+/* ── feed reconnecting state ────────────────────────────────────────────── */
+.live-dot.reconn { color: hsl(var(--warning)); }
+.live-dot.reconn i { background: hsl(var(--warning)); box-shadow: 0 0 8px hsl(var(--warning) / 0.7); animation: reconnPulse 1s ease-in-out infinite; }
+@keyframes reconnPulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .live-dot.reconn i { animation: none; } }

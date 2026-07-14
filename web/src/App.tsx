@@ -64,6 +64,7 @@ export default function App() {
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
   const [tab, setTab] = useState<"engine" | "epochs" | "estimator">("engine");
+  const [feedState, setFeedState] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
   const engine = useEngineStatus();
@@ -83,6 +84,7 @@ export default function App() {
           cancelAnimationFrame(raf);
           raf = requestAnimationFrame(() => {
             setBook(feed.getBook());
+            setFeedState(feed.connState);
             if (feed.funding) setFundingApr(fundingAprPct(feed.funding.rateMicros, m.fundingIntervalSec));
           });
         };
@@ -179,9 +181,12 @@ export default function App() {
           How it works ↗
         </a>
         <div className="nav-right">
-          <span className={`live-dot ${book ? "on" : ""}`}>
+          <span
+            className={`live-dot ${feedState === "live" ? "on" : feedState === "reconnecting" ? "reconn" : ""}`}
+            title={`Perpl feed: ${feedState}`}
+          >
             <i />
-            PERPL
+            {feedState === "reconnecting" ? "RECONNECTING" : "PERPL"}
           </span>
           <span className={`live-dot ${blockNumber ? "on" : ""}`}>
             <i />

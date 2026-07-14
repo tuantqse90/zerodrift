@@ -78,8 +78,17 @@ export class PerplFeed {
   private pingTimer: number | null = null;
   funding: FundingEvent | null = null;
   onUpdate: (() => void) | null = null;
+  /** Connection health for the UI: connecting → live → reconnecting on drop. */
+  connState: "connecting" | "live" | "reconnecting" = "connecting";
 
   constructor(private readonly market: PerplMarketInfo) {}
+
+  private setConn(s: PerplFeed["connState"]): void {
+    if (this.connState !== s) {
+      this.connState = s;
+      this.onUpdate?.();
+    }
+  }
 
   start(): void {
     this.stopped = false;
@@ -135,6 +144,7 @@ export class PerplFeed {
       if (this.pingTimer) clearInterval(this.pingTimer);
       this.bookAtMs = 0;
       if (!this.stopped) {
+        this.setConn("reconnecting");
         const delay = Math.min(1000 * 2 ** this.retry, 30_000);
         this.retry += 1;
         setTimeout(() => this.connect(), delay);
@@ -158,6 +168,7 @@ export class PerplFeed {
         for (const l of msg.ask ?? []) this.askMap.set(l.p, l);
         this.bookAtMs = Date.now();
         this.bookSn = typeof msg.sn === "number" ? msg.sn : undefined;
+        this.setConn("live");
         this.onUpdate?.();
         break;
       case 16:
