@@ -1542,3 +1542,28 @@ footer {
 .gauge-slim > .card { justify-content: space-between; }
 .gauge-slim .gauge-track-wrap { padding-top: 8px; }
 .gauge-slim .legs { margin-top: 0; }
+
+/* ══ RADIAL DRIFT GAUGE ═══════════════════════════════════════════════════ */
+:root {
+  --z-green: hsl(160 84% 55%);
+  --z-amber: hsl(38 92% 56%);
+  --z-red: hsl(0 84% 66%);
+  --z-dim: hsl(250 12% 48%);
+}
+.gauge-card .radial-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 6px 0; }
+.radial-svg { width: 100%; max-width: 340px; height: auto; overflow: visible; }
+.radial-svg .rg-track { fill: none; stroke: hsl(var(--border) / 0.55); stroke-width: 15; stroke-linecap: round; }
+.radial-svg .rg-zone { fill: none; stroke-width: 15; stroke-linecap: round; opacity: 0.22; transition: opacity 0.3s; }
+.radial-svg .rg-zone.active { opacity: 1; filter: drop-shadow(0 0 7px currentColor); }
+.radial-svg .rg-tick { fill: hsl(var(--muted-foreground)); font-family: var(--font-mono); font-size: 12px; }
+.radial-svg .rg-tick.zero { fill: hsl(var(--foreground)); font-weight: 600; }
+.radial-svg .rg-value { font-family: var(--font-mono); font-feature-settings: "tnum" 1, "zero" 1; font-size: 40px; font-weight: 700; fill: var(--z-green); }
+.radial-svg .rg-value.warn { fill: var(--z-amber); }
+.radial-svg .rg-value.hard { fill: var(--z-red); }
+.radial-svg .rg-value.idle { fill: hsl(var(--foreground)); }
+.radial-svg .rg-sub { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.22em; fill: hsl(var(--muted-foreground)); }
+.radial-chip { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); }
+@media (prefers-reduced-motion: no-preference) {
+  .rg-needle-idle { animation: needleSway 6s ease-in-out infinite; }
+  @keyframes needleSway { 0%,100% { transform: rotate(0deg); } 30% { transform: rotate(4deg); } 65% { transform: rotate(-3deg); } }
+}
