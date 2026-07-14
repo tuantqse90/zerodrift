@@ -13,6 +13,10 @@ live on-chain order book, hedge console, a points estimator, and a streaming log
 real engine running in the background. Everything on the page is live data — market feed,
 funding APR, points boost, spot price, and the on-chain epoch feed — no mocks.
 
+New here? Read the **[How it works guide](https://hedge.nullterminal.xyz/#/guide)** — the
+strategy, how to use the terminal, how to go live, and the honest fine print (what earns
+points, what doesn't, the risks).
+
 ![ZeroDrift terminal — live chart, order book, engine log, points estimator, on-chain epochs](docs/assets/demo.gif)
 
 ## What it does

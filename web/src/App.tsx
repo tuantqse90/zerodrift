@@ -175,6 +175,9 @@ export default function App() {
         </div>
         <span className="tagline">Delta-neutral Perpl points farming — hold MON, short the perp, farm the volume.</span>
         <span className="spacer" />
+        <a className="guide-link" href="#/guide">
+          How it works ↗
+        </a>
         <div className="nav-right">
           <span className={`live-dot ${book ? "on" : ""}`}>
             <i />
