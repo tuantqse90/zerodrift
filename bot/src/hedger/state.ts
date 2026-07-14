@@ -4,6 +4,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { alertOnce } from "../lib/telegram";
+import { HEDGER_CONFIG } from "./config";
 import { pushEvent } from "./status";
 
 export type HedgerState =
@@ -31,7 +32,7 @@ export interface DurableState {
   updatedAt: string;
 }
 
-const DATA_DIR = new URL("../../data/", import.meta.url).pathname;
+const DATA_DIR = HEDGER_CONFIG.dataDir;
 const STATE_FILE = `${DATA_DIR}perpl-hedger-state.json`;
 
 export function loadState(): DurableState {

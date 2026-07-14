@@ -21,6 +21,11 @@ export interface EngineStatus {
   events: StatusEvent[];
   history?: HistoryPoint[];
   mode: string;
+  /** Active strategy: "churn" | "avellaneda". */
+  strategy?: string;
+  /** AS quoting telemetry (0 while churn is active). */
+  asHalfSpreadBps?: number;
+  asSkewBps?: number;
   state: string;
   marketName: string;
   mid: number;
@@ -59,13 +64,15 @@ export interface EngineStatus {
   };
 }
 
-export function useEngineStatus(): EngineStatus | null {
+/** Poll one deployed bot's status feed. `src` selects which bot (each writes its own file). */
+export function useEngineStatus(src = "/status.json"): EngineStatus | null {
   const [status, setStatus] = useState<EngineStatus | null>(null);
   useEffect(() => {
     let live = true;
+    setStatus(null); // switching feeds → clear stale bot's data
     const tick = async () => {
       try {
-        const res = await fetch("/status.json", { cache: "no-store" });
+        const res = await fetch(src, { cache: "no-store" });
         if (res.ok && live) setStatus((await res.json()) as EngineStatus);
       } catch {
         /* keep last */
@@ -77,7 +84,7 @@ export function useEngineStatus(): EngineStatus | null {
       live = false;
       clearInterval(t);
     };
-  }, []);
+  }, [src]);
   return status;
 }
 

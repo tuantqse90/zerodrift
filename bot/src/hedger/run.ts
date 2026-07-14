@@ -17,7 +17,7 @@ import {
 import { alertOnce, announceOnlineOnce, sendTelegram } from "../lib/telegram";
 import { PERPL_CHAIN_ID } from "../lib/config";
 import { Churner } from "./churn";
-import { ChurnPolicy, type ChurnIntensity } from "./churn-policy";
+import { ChurnPolicy } from "./churn-policy";
 import { HEDGER_CONFIG as CFG } from "./config";
 import { FundingMonitor } from "./funding";
 import { MakerWorker } from "./maker";
@@ -27,13 +27,14 @@ import { buySpotMon, sellSpotMon, spotPriceUsd } from "./spot";
 import { loadState, saveState, transition } from "./state";
 import { pushEvent, recordHistory, writeStatus } from "./status";
 import { TrendMonitor } from "./trend";
+import { AvellanedaStrategy } from "./strategies/avellaneda-strategy";
 
 const MODE = CFG.live ? "LIVE" : "PAPER";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
   console.log(
-    `zerodrift hedger starting · market=${CFG.market} notional=$${CFG.notionalUsd} ` +
+    `zerodrift hedger starting · strategy=${CFG.strategy} market=${CFG.market} notional=$${CFG.notionalUsd} ` +
       `lv=${CFG.leverage / 100}x churn=${CFG.churnIntervalMs / 60000}m×${CFG.churnFraction} ` +
       `delta=${CFG.deltaSoftPct}/${CFG.deltaHardPct}% mode=${MODE} chain=${PERPL_CHAIN_ID}`,
   );
@@ -51,7 +52,8 @@ async function main(): Promise<void> {
   const churner = new Churner();
   const churnPolicy = new ChurnPolicy(market.fundingIntervalSec);
   const trend = new TrendMonitor();
-  let churnIntensity: ChurnIntensity = "waiting";
+  const asStrategy = new AvellanedaStrategy();
+  let churnIntensity: string = "waiting";
 
   const feed = new PerplFeed(market, (ev: PerplFundingEvent) => {
     if (ev.marketId !== market.id) return;
@@ -220,6 +222,35 @@ async function main(): Promise<void> {
         }
 
         case "HEDGED": {
+          // ── Avellaneda-Stoikov: continuous two-sided quoting ─────────────
+          if (CFG.strategy === "avellaneda") {
+            // AS runs its own inventory band, so only a HARD breach is a safety event
+            // (not the soft guard the churn strategy trips on).
+            if (deltaPct > CFG.deltaHardPct) {
+              await asStrategy.flatten(exec);
+              transition(state, "REBALANCING", `delta ${deltaPct.toFixed(2)}% > hard (AS safety)`);
+              break;
+            }
+            if (funding.shouldPause()) {
+              await asStrategy.flatten(exec);
+              transition(state, "PAUSED_FUNDING", `paying ${(-funding.earnAprPct()).toFixed(1)}% APR > ${CFG.fundingPauseApr}%`);
+              void alertOnce("ph:funding-pause", 3600_000, `⏸ AS paused: funding ${funding.earnAprPct().toFixed(1)}% APR`);
+              break;
+            }
+            await asStrategy.tick({
+              book,
+              mid,
+              shortMon,
+              targetMon: state.targetSizeMon,
+              volFrac: trend.realizedVolFrac(),
+              exec,
+              market,
+            });
+            churnIntensity = asStrategy.intensity;
+            break;
+          }
+
+          // ── Churn: discrete round-trips ──────────────────────────────────
           if (deltaPct > CFG.deltaSoftPct) {
             transition(state, "REBALANCING", `delta ${deltaPct.toFixed(2)}% > soft ${CFG.deltaSoftPct}%`);
             break;
@@ -348,6 +379,7 @@ async function main(): Promise<void> {
         case "UNWINDING": {
           if (unwindStartedAt === 0) unwindStartedAt = Date.now();
           await churner.abort();
+          await asStrategy.flatten(exec);
           await hedgeWorker?.cancel();
           await rebalanceWorker?.cancel();
           hedgeWorker = rebalanceWorker = null;
@@ -407,9 +439,13 @@ async function main(): Promise<void> {
           : 0;
       writeStatus({
         mode: MODE,
+        strategy: CFG.strategy,
         state: state.state,
         marketName: market.name,
         mid,
+        // AS quoting telemetry (0 while the churn strategy is active).
+        asHalfSpreadBps: CFG.strategy === "avellaneda" ? Number(asStrategy.lastHalfBps.toFixed(2)) : 0,
+        asSkewBps: CFG.strategy === "avellaneda" ? Number(asStrategy.lastSkewBps.toFixed(2)) : 0,
         deltaPct: Number(deltaPct.toFixed(3)),
         // Signed raw delta (+ = spot exceeds short, − = short exceeds spot) so the
         // gauge can rest at dead-center and swing out during a churn cycle.

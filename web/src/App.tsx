@@ -50,6 +50,22 @@ function Fv({ text, num, extra = "" }: { text: string; num: number | null; extra
   return <span className={`t-val ${extra} ${cls}`}>{text}</span>;
 }
 
+// Selectable engine strategies — each is a separately deployed bot writing its own
+// status feed, so users can watch (and compare) the different farming engines live.
+type StrategyKey = "churn" | "avellaneda";
+const STRATEGIES: Record<StrategyKey, { label: string; src: string; blurb: string }> = {
+  churn: {
+    label: "Churn",
+    src: "/status.json",
+    blurb: "Discrete close/re-open round-trips. Simple, robust, funding-adaptive volume.",
+  },
+  avellaneda: {
+    label: "Avellaneda-Stoikov",
+    src: "/status-avellaneda.json",
+    blurb: "Continuous two-sided market making. Captures the spread, skews to hold the hedge, less wash-like.",
+  },
+};
+
 function ago(unixSec: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - unixSec);
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
@@ -67,10 +83,11 @@ export default function App() {
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
   const [tab, setTab] = useState<"portfolio" | "engine" | "epochs" | "estimator">("engine");
+  const [stratKey, setStratKey] = useState<StrategyKey>("churn");
   const [feedState, setFeedState] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
-  const engine = useEngineStatus();
+  const engine = useEngineStatus(STRATEGIES[stratKey].src);
   const [res, setRes] = useState(900);
   const candles = useCandles(market, res);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -443,6 +460,20 @@ export default function App() {
               </span>
               <span className="meta mono">{engine ? engine.mode.toLowerCase() : "connecting…"}</span>
             </div>
+            <div className="strat-picker" role="tablist" aria-label="Farming strategy">
+              {(Object.keys(STRATEGIES) as StrategyKey[]).map((k) => (
+                <button
+                  key={k}
+                  role="tab"
+                  aria-selected={stratKey === k}
+                  className={stratKey === k ? "active" : ""}
+                  onClick={() => setStratKey(k)}
+                >
+                  {STRATEGIES[k].label}
+                </button>
+              ))}
+            </div>
+            <p className="strat-blurb">{STRATEGIES[stratKey].blurb}</p>
             {engine ? (
               <>
                 <div className="kv">
@@ -462,6 +493,21 @@ export default function App() {
                       {engine.trendStrengthPct.toFixed(2)}%{engine.trendPaused ? " · sitting out" : ""}
                     </span>
                   </div>
+                )}
+                {engine.strategy === "avellaneda" && engine.asHalfSpreadBps != null && (
+                  <>
+                    <div className="kv">
+                      <span className="k">QUOTE SPREAD</span>
+                      <span className="mono v-mint">±{engine.asHalfSpreadBps.toFixed(1)} bps</span>
+                    </div>
+                    <div className="kv">
+                      <span className="k">INV SKEW</span>
+                      <span className={`mono ${Math.abs(engine.asSkewBps ?? 0) > 0.1 ? "v-warn" : ""}`}>
+                        {(engine.asSkewBps ?? 0) >= 0 ? "+" : ""}
+                        {(engine.asSkewBps ?? 0).toFixed(1)} bps
+                      </span>
+                    </div>
+                  </>
                 )}
                 <div className="kv">
                   <span className="k">ROUND TRIPS</span>

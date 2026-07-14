@@ -26,6 +26,23 @@ export class TrendMonitor {
     while (this.buf.length > 2 && this.buf[0].t < cutoff) this.buf.shift();
   }
 
+  /**
+   * Realized volatility over the window as a fraction of price — the standard
+   * deviation of successive tick-to-tick returns. Feeds the AS spread term.
+   */
+  realizedVolFrac(): number {
+    if (this.buf.length < 3) return 0;
+    const rets: number[] = [];
+    for (let i = 1; i < this.buf.length; i++) {
+      const prev = this.buf[i - 1].mid;
+      if (prev > 0) rets.push((this.buf[i].mid - prev) / prev);
+    }
+    if (rets.length < 2) return 0;
+    const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const varc = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1);
+    return Math.sqrt(varc);
+  }
+
   /** Absolute % move across the window — the directional trend strength. */
   strengthPct(): number {
     if (this.buf.length < 2) return 0;

@@ -5,8 +5,9 @@
 
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import type { FillEvent } from "../lib/perpl-trade";
+import { HEDGER_CONFIG } from "./config";
 
-const DATA_DIR = new URL("../../data/", import.meta.url).pathname;
+const DATA_DIR = HEDGER_CONFIG.dataDir;
 const FILLS = `${DATA_DIR}perpl-hedger-fills.jsonl`;
 const EVENTS = `${DATA_DIR}perpl-hedger.jsonl`;
 const WEEKLY = `${DATA_DIR}perpl-hedger-weekly.jsonl`;
