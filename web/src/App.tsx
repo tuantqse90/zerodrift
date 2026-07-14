@@ -259,7 +259,7 @@ export default function App() {
 
       <div className="term-grid">
         <div className="col">
-          <section className="card glass" style={{ flex: 1 }}>
+          <section className="card glass">
             <div className="card-head">
               <span className="title">
                 <i />

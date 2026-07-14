@@ -928,9 +928,11 @@ footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px 360px;
   gap: 10px;
-  align-items: stretch;
+  align-items: start; /* columns size to content — no stretch-induced voids */
 }
 .term-grid .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* Recent-trades tape is bounded + scrolls so it never dictates column height. */
+.trades-card .tape { max-height: 340px; overflow-y: auto; scrollbar-width: thin; }
 
 .term-grid .card { border-radius: 12px; padding: 14px 16px; }
 .term-grid .card-head { margin-bottom: 4px; }
