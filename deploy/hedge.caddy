@@ -14,6 +14,16 @@ hedge.nullterminal.xyz {
 		}
 	}
 
+	# Each deployed bot writes its own status feed under /opt/zerodrift/status/
+	# (status.json = churn, status-avellaneda.json = AS). The web strategy picker
+	# fetches whichever the user selects. The glob serves them all + is cache-busted.
+	handle /status*.json {
+		root * /opt/zerodrift/status
+		file_server
+		header Cache-Control "no-store"
+		header Access-Control-Allow-Origin "*"
+	}
+
 	handle {
 		root * /opt/zerodrift/web
 		try_files {path} /index.html
