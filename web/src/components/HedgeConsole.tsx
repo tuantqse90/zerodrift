@@ -257,28 +257,29 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
 
       {!address ? (
         <>
-          <div className="fieldbox">
-            <div className="fb-label">SPOT LONG — YOU HOLD</div>
-            <div className="fb-row">
-              <span className="fb-main mono" style={{ color: "hsl(var(--muted-foreground) / .5)" }}>
-                0.0
-              </span>
-              <span className="fb-token">
-                <img src="/mon.svg" className="coin" alt="" />
-                MON
-              </span>
+          <div className="hedge-legs">
+            <div className="fieldbox">
+              <div className="fb-label">SPOT LONG — YOU HOLD</div>
+              <div className="fb-row">
+                <span className="fb-main mono muted">0.0</span>
+                <span className="fb-token">
+                  <img src="/mon.svg" className="coin" alt="" />
+                  MON
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="fieldbox">
-            <div className="fb-label">PERP SHORT — YOU OPEN</div>
-            <div className="fb-row">
-              <span className="fb-main mono" style={{ color: "hsl(var(--muted-foreground) / .5)" }}>
-                0.0
-              </span>
-              <span className="fb-token">
-                <img src="/mon.svg" className="coin" alt="" />
-                MON-PERP
-              </span>
+            <div className="leg-connector" aria-hidden="true">
+              <span>δ0</span>
+            </div>
+            <div className="fieldbox">
+              <div className="fb-label">PERP SHORT — YOU OPEN</div>
+              <div className="fb-row">
+                <span className="fb-main mono muted">0.0</span>
+                <span className="fb-token">
+                  <img src="/mon.svg" className="coin" alt="" />
+                  MON-PERP
+                </span>
+              </div>
             </div>
           </div>
           <button className="btn block" onClick={doConnect}>

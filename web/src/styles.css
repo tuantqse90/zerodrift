@@ -1448,3 +1448,39 @@ footer {
 .coin.sm { width: 15px; height: 15px; }
 .statsbar .pair .coin { width: 17px; height: 17px; }
 .fb-token .coin { width: 18px; height: 18px; }
+
+/* ── hedge legs connector (long + short net to δ0) ──────────────────────── */
+.hedge-legs { position: relative; }
+.hedge-legs .fieldbox { margin-bottom: 8px; }
+.hedge-legs .fieldbox:nth-child(3) { margin-bottom: 12px; }
+.fb-main.muted { color: hsl(var(--muted-foreground) / 0.5); }
+.leg-connector {
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 4px);
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.leg-connector span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--mint));
+  box-shadow: 0 2px 8px hsl(252 80% 4% / 0.5);
+}
+/* refined primary button + fieldbox focus */
+.card .btn.primary, .card .btn.block:not(.secondary):not(.danger) {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 600;
+  box-shadow: 0 1px 0 hsl(0 0% 100% / 0.12) inset;
+}
+.fieldbox:focus-within { border-color: hsl(var(--primary) / 0.5); }
