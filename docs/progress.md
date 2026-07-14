@@ -39,10 +39,20 @@
 3. Testnet order-flow validation: place/cancel PostOnly, measure lb expiry, verify fill
    parsing (`bun run probe:testnet` extension).
 
+**Hedger engine** ✅ (pulled Day-3 work forward)
+- Full FSM verified in paper mode on LIVE mainnet data: INIT (NT quote $100 → 4528 MON)
+  → SPOT_FILLED → HEDGED (maker short fill, exactly 0.9bps fee) → CHURNING → full
+  close/reopen round-trip (2×1339 MON maker fills) → HEDGED. Restart-safe (delta guard
+  rebuilds the short from durable spot state).
+- Bug caught by smoke run: raw delta guard tripped during the churn's own close leg
+  (29% > 3% hard) → fixed via `Churner.pendingMon()` exclusion.
+- **Mainnet MON market: `points_boost_bps=20000` → 2x points on MON.** ttl=20 blocks.
+- Overnight paper run left running (15m churn) — check `bot/data/perpl-hedger*.jsonl`.
+
 ## Next
 
-- Day 2: testnet order round-trip with real key; pin Amount-string scaling empirically.
-- Day 3: hedger engine (FSM, spot leg, churn, delta, funding, pnl) paper mode on mainnet.
-- Day 4: live smoke $50 + registry epoch + funding-sign verification.
+- Day 2: testnet order round-trip with real key (owner-blocked); pin Amount-string scaling.
+- Day 3: review overnight paper ledgers; tune churn/reprice.
+- Day 4: live smoke $50 + registry mainnet deploy + funding-sign verification.
 - Day 5: web UI + deploy hedge.nullterminal.xyz.
 - Day 6: polish + submission.
