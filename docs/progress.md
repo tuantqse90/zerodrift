@@ -56,3 +56,12 @@
 - Day 4: live smoke $50 + registry mainnet deploy + funding-sign verification.
 - Day 5: web UI + deploy hedge.nullterminal.xyz.
 - Day 6: polish + submission.
+
+## Day 1 (cont.) — MAINNET DEPLOY
+
+**HedgeRegistry LIVE on Monad mainnet** ✅
+- Address: `0x24BD952B9BaD090Eab24A1a91948fA130c8D3A48`
+- Deploy tx: `0x9d63893c688b0e57c5f9ecccba6a5b53aaa6592261e4d9ce148a283ab1481dfc`
+- Smoke: epoch #0 opened (tx 0xa0538ac2…) + closed on-chain, EpochOpened event verified.
+- Source verified on Sourcify: **exact_match** (visible on monadscan).
+- Deployer: relayer wallet (contract is ownerless — deployer has no special rights).
