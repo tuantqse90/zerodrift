@@ -57,6 +57,24 @@
 - Day 5: web UI + deploy hedge.nullterminal.xyz.
 - Day 6: polish + submission.
 
+## Day 1 (cont.) — WEB TERMINAL BUILT + DEPLOYED TO VPS
+
+**ZeroDrift web terminal** ✅ (pulled Day-5 work forward)
+- Vite + React + viem, no wallet SDK (injected connect). Signature element: spirit-level
+  drift gauge. Live vs headless screenshots verified: Perpl book ladder, funding APR
+  (+17.5% shorts EARN at build time), 2x points boost, NT spot price, on-chain epoch feed.
+- **Gotchas found & solved:**
+  - Perpl rejects foreign browser Origins: REST has no CORS headers, WS closes 1002.
+    → same-origin `/perpl/*` proxy (vite dev proxy + Caddy `header_up Origin`).
+  - `rpc.monad.xyz` caps `eth_getLogs` at **100 blocks** (-32614) → epoch feed reads
+    contract views per owner (`epochCount`+`getEpoch`) + rolling 100-block live scan.
+- **Deployed**: dist → VPS `/opt/zerodrift/web`, Caddy vhost `zerodrift.caddy`
+  (file_server + /perpl proxy), `caddy validate` + reload OK, HTTP 308→https confirmed.
+  ⏳ waiting ONLY on owner DNS: Cloudflare A record `hedge` → VPS IP (grey-cloud first
+  for ACME; CF API tokens on the box are all invalid — owner dashboard step, ~30s).
+- Console flow: connect wallet → paste trade-scope key (localStorage) → maker short with
+  auto-repost + churn toggle (runs while tab open) → attest epoch on-chain via wallet.
+
 ## Day 1 (cont.) — MAINNET DEPLOY
 
 **HedgeRegistry LIVE on Monad mainnet** ✅

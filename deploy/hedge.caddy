@@ -1,7 +1,8 @@
-# hedge.nullterminal.xyz — ZeroDrift (append to /etc/caddy/conf.d/ on the VPS).
+# hedge.nullterminal.xyz — ZeroDrift static site (deployed at /etc/caddy/conf.d/zerodrift.caddy).
 # /perpl/* is a same-origin reverse proxy to Perpl: the upstream rejects foreign
-# browser Origins on REST (no CORS) and WS (1002), so we rewrite Origin here.
-# Validate before reload: caddy validate --config /etc/caddy/Caddyfile
+# browser Origins on REST (no CORS) and WS (close 1002), so we rewrite Origin here.
+# Deploy: rsync web/dist/ root@<VPS>:/opt/zerodrift/web/ ; caddy validate ; systemctl reload caddy
+# DNS (owner): Cloudflare A record hedge -> VPS origin IP, grey-cloud first for ACME.
 
 hedge.nullterminal.xyz {
 	encode gzip zstd
@@ -14,6 +15,8 @@ hedge.nullterminal.xyz {
 	}
 
 	handle {
-		reverse_proxy localhost:8422
+		root * /opt/zerodrift/web
+		try_files {path} /index.html
+		file_server
 	}
 }
