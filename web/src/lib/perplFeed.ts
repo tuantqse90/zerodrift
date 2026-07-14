@@ -77,6 +77,8 @@ export class PerplFeed {
   private stopped = false;
   private pingTimer: number | null = null;
   funding: FundingEvent | null = null;
+  /** Recent trades (newest first) — carried on the same socket as the book. */
+  trades: Trade[] = [];
   onUpdate: (() => void) | null = null;
   /** Connection health for the UI: connecting → live → reconnecting on drop. */
   connState: "connecting" | "live" | "reconnecting" = "connecting";
@@ -125,6 +127,7 @@ export class PerplFeed {
           subs: [
             { stream: `order-book@${this.market.id}`, subscribe: true },
             { stream: `funding@${PERPL_CHAIN_ID}`, subscribe: true },
+            { stream: `trades@${this.market.id}`, subscribe: true },
           ],
         }),
       );
@@ -189,6 +192,18 @@ export class PerplFeed {
           this.funding = { marketId: this.market.id, feb: ev.feb, rateMicros: ev.rate, atMs: Date.now() };
           this.onUpdate?.();
         }
+        break;
+      }
+      case 17:
+      case 18: {
+        // Trades snapshot (17) / update (18) — same socket as the book.
+        const pd = 10 ** this.market.priceDecimals;
+        const sd = 10 ** this.market.sizeDecimals;
+        const mapped: Trade[] = (msg.d ?? [])
+          .map((t: any) => ({ px: t.p / pd, sz: t.s / sd, side: t.sd === 2 ? "sell" : "buy", tMs: t.at?.t ?? Date.now() }))
+          .reverse();
+        this.trades = (msg.mt === 17 ? mapped : [...mapped, ...this.trades]).slice(0, 40);
+        this.onUpdate?.();
         break;
       }
     }

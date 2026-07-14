@@ -1,20 +1,7 @@
 // RecentTrades — live trade tape for the MON perp, straight from Perpl's trades
 // stream. Buys mint, sells red. Fills the middle column under the book.
 
-import { useEffect, useState } from "react";
-import { TradesFeed, type PerplMarketInfo, type Trade } from "../lib/perplFeed";
-
-export function useTrades(market: PerplMarketInfo | null): Trade[] {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  useEffect(() => {
-    if (!market) return;
-    const feed = new TradesFeed(market);
-    feed.onUpdate = () => setTrades([...feed.trades]);
-    feed.start();
-    return () => feed.stop();
-  }, [market]);
-  return trades;
-}
+import type { PerplMarketInfo, Trade } from "../lib/perplFeed";
 
 function hhmmss(ms: number): string {
   const d = new Date(ms);

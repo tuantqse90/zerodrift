@@ -8,7 +8,8 @@ import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { HistorySpark } from "./components/HistorySpark";
 import { PriceChart, candleStats, useCandles } from "./components/PriceChart";
-import { RecentTrades, useTrades } from "./components/RecentTrades";
+import { RecentTrades } from "./components/RecentTrades";
+import type { Trade } from "./lib/perplFeed";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
   fetchPerplMarket,
@@ -71,7 +72,7 @@ export default function App() {
   const engine = useEngineStatus();
   const [res, setRes] = useState(900);
   const candles = useCandles(market, res);
-  const trades = useTrades(market);
+  const [trades, setTrades] = useState<Trade[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -87,6 +88,7 @@ export default function App() {
           raf = requestAnimationFrame(() => {
             setBook(feed.getBook());
             setFeedState(feed.connState);
+            setTrades([...feed.trades]);
             if (feed.funding) setFundingApr(fundingAprPct(feed.funding.rateMicros, m.fundingIntervalSec));
           });
         };

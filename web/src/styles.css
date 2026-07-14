@@ -928,11 +928,20 @@ footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px 360px;
   gap: 10px;
-  align-items: start; /* columns size to content — no stretch-induced voids */
+  align-items: stretch; /* all columns equal height */
 }
 .term-grid .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-/* Recent-trades tape is bounded + scrolls so it never dictates column height. */
-.trades-card .tape { max-height: 340px; overflow-y: auto; scrollbar-width: thin; }
+
+/* The last card in each column grows to fill, so every column ends level with the
+   tallest — no ragged void under the shortest. Each grows gracefully: trades scroll,
+   the gauge anchors its position legs to the bottom, the engine anchors its note. */
+.gauge-slim { flex: 1; display: flex; }
+.gauge-slim > .card { flex: 1; display: flex; flex-direction: column; }
+.gauge-slim .legs { margin-top: auto; }
+.trades-card { flex: 1; }
+.trades-card .tape { flex: 1; overflow-y: auto; scrollbar-width: thin; }
+.engine-mini { flex: 1; display: flex; flex-direction: column; }
+.engine-mini .foot { margin-top: auto; }
 
 .term-grid .card { border-radius: 12px; padding: 14px 16px; }
 .term-grid .card-head { margin-bottom: 4px; }
