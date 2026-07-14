@@ -7,10 +7,27 @@ import type { PerplMarketInfo } from "../lib/perplFeed";
 
 const CYCLES: Record<number, string> = { 5: "5 min", 15: "15 min", 30: "30 min", 60: "60 min" };
 
+// The engine's two stances. "Adaptive" is what the live bot uses when funding pays
+// shorts: bigger clips, shorter interval → up to ~2× the volume for near-zero extra
+// cost. "Conservative" is the funding-neutral baseline.
+type Preset = "conservative" | "adaptive";
+const PRESETS: Record<Preset, { fraction: number; cycleMin: number; label: string }> = {
+  conservative: { fraction: 25, cycleMin: 15, label: "Conservative" },
+  adaptive: { fraction: 50, cycleMin: 7, label: "Adaptive (funding-boosted)" },
+};
+
 export function Estimator({ market, fundingApr }: { market: PerplMarketInfo | null; fundingApr: number | null }) {
   const [notional, setNotional] = useState("1000");
-  const [cycleMin, setCycleMin] = useState(15);
-  const [fraction, setFraction] = useState(25);
+  const shortsEarn = fundingApr !== null && fundingApr > 0;
+  const [preset, setPreset] = useState<Preset>(shortsEarn ? "adaptive" : "conservative");
+  const [cycleMin, setCycleMin] = useState(PRESETS[preset].cycleMin);
+  const [fraction, setFraction] = useState(PRESETS[preset].fraction);
+
+  const applyPreset = (p: Preset) => {
+    setPreset(p);
+    setCycleMin(PRESETS[p].cycleMin);
+    setFraction(PRESETS[p].fraction);
+  };
 
   const n = Math.max(0, Number(notional) || 0);
   const makerBps = market ? market.makerFeeMicros / 100 : 0.9;
@@ -30,6 +47,16 @@ export function Estimator({ market, fundingApr }: { market: PerplMarketInfo | nu
         <div className="field" style={{ minWidth: 160 }}>
           <label htmlFor="est-n">HEDGE NOTIONAL (USD)</label>
           <input id="est-n" value={notional} onChange={(e) => setNotional(e.target.value)} inputMode="decimal" />
+        </div>
+        <div className="field">
+          <label>STRATEGY</label>
+          <div className="tf-btns">
+            {(Object.keys(PRESETS) as Preset[]).map((p) => (
+              <button key={p} className={preset === p ? "active" : ""} onClick={() => applyPreset(p)}>
+                {p === "adaptive" ? "Adaptive" : "Conservative"}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="field">
           <label>CHURN CYCLE</label>
@@ -91,9 +118,12 @@ export function Estimator({ market, fundingApr }: { market: PerplMarketInfo | nu
       </div>
 
       <p className="est-note">
-        Price exposure nets to ~zero — the cost of farming is fees minus funding. mPoints allocation is Perpl's own
-        formula; boosted maker volume is the public signal. Delta drift, spot-leg costs and taker rebalances add
-        small extras not modeled here.
+        Price exposure nets to ~zero — the cost of farming is fees minus funding. The live engine runs the{" "}
+        <b style={{ color: "hsl(var(--foreground))" }}>Adaptive</b> stance while shorts earn funding (as now,{" "}
+        {fundingApr !== null ? `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR` : "—"}): bigger clips,
+        shorter interval, ~2× the boosted volume for near-zero extra cost. mPoints allocation is Perpl's own formula;
+        boosted maker volume is the public signal. Delta drift, spot-leg costs and taker rebalances add small extras
+        not modeled here.
       </p>
     </div>
   );
