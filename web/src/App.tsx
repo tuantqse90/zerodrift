@@ -8,6 +8,7 @@ import { Estimator } from "./components/Estimator";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { HistorySpark } from "./components/HistorySpark";
 import { PriceChart, candleStats, useCandles } from "./components/PriceChart";
+import { RecentTrades, useTrades } from "./components/RecentTrades";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
   fetchPerplMarket,
@@ -70,6 +71,7 @@ export default function App() {
   const engine = useEngineStatus();
   const [res, setRes] = useState(900);
   const candles = useCandles(market, res);
+  const trades = useTrades(market);
 
   useEffect(() => {
     let live = true;
@@ -323,7 +325,7 @@ export default function App() {
         </div>
 
         <div className="col book-col">
-          <section className="card glass book-card">
+          <section className="card glass">
             <div className="card-head">
               <span className="title">
                 <i />
@@ -332,6 +334,16 @@ export default function App() {
               <span className="meta mono">on-chain CLOB</span>
             </div>
             <BookLadder book={book} depth={9} />
+          </section>
+          <section className="card glass trades-card">
+            <div className="card-head">
+              <span className="title">
+                <i />
+                Recent trades
+              </span>
+              <span className="meta mono">live tape</span>
+            </div>
+            <RecentTrades market={market} trades={trades} />
           </section>
         </div>
 

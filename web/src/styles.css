@@ -21,7 +21,7 @@
   --glass-bg: 250 30% 12%;
   --glow-primary: 252 91% 71%;
   --glow-mint: 160 84% 55%;
-  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -1311,3 +1311,51 @@ footer {
 .live-dot.reconn i { background: hsl(var(--warning)); box-shadow: 0 0 8px hsl(var(--warning) / 0.7); animation: reconnPulse 1s ease-in-out infinite; }
 @keyframes reconnPulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .live-dot.reconn i { animation: none; } }
+
+/* ══ TYPOGRAPHY REFRESH — friendlier, less "terminal" ═════════════════════
+   Labels move to Inter with modest tracking (reads like Linear/Stripe, not a
+   console). NUMBERS stay JetBrains Mono for tabular alignment. */
+.t-label, .card-head .meta, .kv .k, .fieldbox .fb-label, .fieldbox .fb-hint,
+.field label, .ladder-head, .spread-row, .epoch-table th, .est-cell .k, .spec,
+.chart-stats .cs-k, .intensity-badge, .g-leg-tag, .tf-btns button,
+.bottom-tabs button, .tab-meta, .lb-k, .lb-s, .gauge-scale, .state-chip,
+.spark-head, .reg-foot, .chip, .hero .pill, .pill.mono, .live-dot,
+.guide-link, .card-head .title, footer, .serial-plate {
+  font-family: var(--font-sans) !important;
+  letter-spacing: 0.02em;
+}
+/* tighten the loud tracking on small caps labels */
+.t-label, .fieldbox .fb-label, .field label, .ladder-head, .epoch-table th,
+.est-cell .k, .chart-stats .cs-k, .lb-k, .g-leg-tag, .kv .k, .card-head .meta {
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.hero .pill, .pill.mono, .live-dot, .intensity-badge, .state-chip, .tab-meta,
+.bottom-tabs button, .tf-btns button, .spec, .gauge-scale, .reg-foot, .chip {
+  letter-spacing: 0.03em;
+}
+
+/* ── recent trades tape (fills the book column) ─────────────────────────── */
+.book-col { display: flex; flex-direction: column; gap: 10px; }
+.trades-card { flex: 1; display: flex; flex-direction: column; }
+.tape { font-family: var(--font-mono); font-feature-settings: "tnum" 1, "zero" 1; font-size: 12px; flex: 1; }
+.tape-head, .tape-row { display: grid; grid-template-columns: 1.1fr 1fr 0.8fr; padding: 4px 8px; }
+.tape-head {
+  font-family: var(--font-sans);
+  color: hsl(var(--muted-foreground));
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  margin-bottom: 4px;
+}
+.tape-row { border-radius: 4px; }
+.tape-row:hover { background: hsl(var(--secondary) / 0.4); }
+.tape-row .px { font-weight: 600; }
+.tape-row.buy .px { color: hsl(var(--mint)); }
+.tape-row.sell .px { color: hsl(0 84% 70%); }
+.tape-row .num { text-align: right; color: hsl(var(--foreground) / 0.8); }
+.tape-row .tm { text-align: right; color: hsl(var(--muted-foreground)); }
+@media (prefers-reduced-motion: no-preference) {
+  .tape-row:first-child { animation: tapeIn 0.4s ease-out; }
+  @keyframes tapeIn { from { background: hsl(var(--primary) / 0.12); } }
+}

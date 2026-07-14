@@ -199,6 +199,86 @@ export function fundingAprPct(rateMicros: number, intervalSec: number): number {
   return (rateMicros / 1_000_000) * ((365 * 24 * 3600) / intervalSec) * 100;
 }
 
+// ── recent trades ─────────────────────────────────────────────────────────────
+
+export interface Trade {
+  px: number;
+  sz: number;
+  side: "buy" | "sell";
+  tMs: number;
+}
+
+/** Live trade tape for one market: snapshot mt:17, updates mt:18. Keeps newest first. */
+export class TradesFeed {
+  trades: Trade[] = [];
+  onUpdate: (() => void) | null = null;
+
+  private ws: WebSocket | null = null;
+  private stopped = false;
+  private retry = 0;
+  private pingTimer: number | null = null;
+
+  constructor(
+    private readonly market: PerplMarketInfo,
+    private readonly keep = 40,
+  ) {}
+
+  start(): void {
+    this.stopped = false;
+    this.connect();
+  }
+  stop(): void {
+    this.stopped = true;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.ws?.close();
+  }
+
+  private map(raw: any): Trade {
+    const pd = 10 ** this.market.priceDecimals;
+    const sd = 10 ** this.market.sizeDecimals;
+    return { px: raw.p / pd, sz: raw.s / sd, side: raw.sd === 2 ? "sell" : "buy", tMs: raw.at?.t ?? Date.now() };
+  }
+
+  private connect(): void {
+    if (this.stopped) return;
+    const ws = new WebSocket(`${PERPL_WS}/ws/v1/market-data`);
+    this.ws = ws;
+    ws.onopen = () => {
+      this.retry = 0;
+      ws.send(JSON.stringify({ mt: 5, subs: [{ stream: `trades@${this.market.id}`, subscribe: true }] }));
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      this.pingTimer = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ mt: 1, t: Date.now() }));
+      }, 25_000);
+    };
+    ws.onmessage = (ev) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      if (msg.mt === 17) {
+        this.trades = (msg.d ?? []).map((t: any) => this.map(t)).reverse().slice(0, this.keep);
+        this.onUpdate?.();
+      } else if (msg.mt === 18) {
+        const fresh = (msg.d ?? []).map((t: any) => this.map(t)).reverse();
+        this.trades = [...fresh, ...this.trades].slice(0, this.keep);
+        this.onUpdate?.();
+      }
+    };
+    ws.onclose = () => {
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      if (!this.stopped) {
+        const delay = Math.min(1000 * 2 ** this.retry, 30_000);
+        this.retry += 1;
+        setTimeout(() => this.connect(), delay);
+      }
+    };
+    ws.onerror = () => ws.close();
+  }
+}
+
 // ── candles ───────────────────────────────────────────────────────────────────
 
 export interface Candle {
