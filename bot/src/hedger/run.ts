@@ -26,6 +26,7 @@ import { closeEpochOnChain, openEpochOnChain } from "./registry";
 import { buySpotMon, sellSpotMon, spotPriceUsd } from "./spot";
 import { loadState, saveState, transition } from "./state";
 import { pushEvent, recordHistory, writeStatus } from "./status";
+import { TrendMonitor } from "./trend";
 
 const MODE = CFG.live ? "LIVE" : "PAPER";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   const state = loadState();
   const churner = new Churner();
   const churnPolicy = new ChurnPolicy(market.fundingIntervalSec);
+  const trend = new TrendMonitor();
   let churnIntensity: ChurnIntensity = "waiting";
 
   const feed = new PerplFeed(market, (ev: PerplFundingEvent) => {
@@ -96,6 +98,9 @@ async function main(): Promise<void> {
   let hedgeWorker: MakerWorker | null = null;
   let rebalanceWorker: MakerWorker | null = null;
   let unwindWorker: MakerWorker | null = null;
+  // Which leg the current REBALANCING cycle corrects on: perp (fast/default) or a
+  // one-shot spot swap (variation, chosen per-entry so the perp isn't the only tape).
+  let rebalanceRoute: "perp" | "spot" | null = null;
   const fillLog: FillEvent[] = [];
   exec.onFill((f) => {
     pnl.recordFill(f, CFG.live ? "live" : "paper");
@@ -161,6 +166,8 @@ async function main(): Promise<void> {
       }
 
       const mid = (book.bids[0].px + book.asks[0].px) / 2;
+      trend.update(mid, Date.now());
+      const trendPaused = trend.shouldPause(Date.now());
       const pos = exec.position();
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
       const deltaMon = state.spotMon - shortMon;
@@ -227,7 +234,15 @@ async function main(): Promise<void> {
             break;
           }
           {
-            const decision = churnPolicy.decide(shortMon, book, funding.earnAprPct(), Date.now(), Math.random());
+            const decision = churnPolicy.decide(
+              shortMon,
+              book,
+              funding.earnAprPct(),
+              Date.now(),
+              Math.random(),
+              trendPaused,
+              trend.strengthPct(),
+            );
             churnIntensity = decision.intensity;
             if (decision.churn) {
               churner.start(decision.clipMon);
@@ -260,9 +275,41 @@ async function main(): Promise<void> {
         }
 
         case "REBALANCING": {
-          // delta > 0: spot exceeds short → grow the short. delta < 0: shrink it.
-          const side = deltaMon > 0 ? "short-open" : "short-close";
+          // delta > 0: spot exceeds short. delta < 0: short exceeds spot.
           const sz = Math.abs(deltaMon);
+
+          // Pick the correction leg once per cycle. A hard breach always takes the
+          // fast perp path; a soft drift is sometimes trued up on the SPOT leg
+          // instead, so the perp doesn't show every correction (less wash-like) — but
+          // only while that keeps the hedged size inside a ±15% band of nominal, so
+          // repeated spot corrections can't quietly shrink or bloat the position.
+          if (rebalanceRoute === null) {
+            const spotAfter = state.spotMon + (deltaMon > 0 ? -sz : sz);
+            const inBand =
+              spotAfter > state.targetSizeMon * 0.85 && spotAfter < state.targetSizeMon * 1.15;
+            rebalanceRoute =
+              deltaPct <= CFG.deltaHardPct && inBand && Math.random() < CFG.spotRebalanceProb ? "spot" : "perp";
+          }
+
+          if (rebalanceRoute === "spot") {
+            // One-shot spot swap to match the short (no Perpl volume, no round-trip).
+            const sell = deltaMon > 0;
+            const fill = sell ? await sellSpotMon(sz) : await buySpotMon(sz * mid);
+            if (fill) {
+              state.spotMon += sell ? -fill.mon : fill.mon;
+              pnl.recordGas(fill.gasUsd);
+              pnl.event("spot-rebalance", { side: sell ? "sell" : "buy", mon: fill.mon, usd: fill.usd, px: fill.px, mode: MODE });
+              saveState(state);
+              rebalanceRoute = null;
+              transition(state, "HEDGED", `spot-side rebalance ${sell ? "sold" : "bought"} ${fill.mon.toFixed(2)} MON`);
+            } else {
+              rebalanceRoute = "perp"; // no spot route this tick → fall back to perp
+            }
+            break;
+          }
+
+          // Perp path: grow the short (delta>0) or shrink it (delta<0).
+          const side = deltaMon > 0 ? "short-open" : "short-close";
           if (deltaPct > CFG.deltaHardPct) {
             const notional = sz * mid;
             if (takerBudgetOk(notional)) {
@@ -280,6 +327,7 @@ async function main(): Promise<void> {
           if (deltaPct <= CFG.deltaSoftPct || rebalanceWorker.done) {
             await rebalanceWorker.cancel();
             rebalanceWorker = null;
+            rebalanceRoute = null;
             transition(state, "HEDGED", `delta back to ${deltaPct.toFixed(2)}%`);
           }
           break;
@@ -380,6 +428,8 @@ async function main(): Promise<void> {
         fundingSignStatus: funding.signStatus,
         // Hedge-desk KPIs: boosted volume farmed + realized cost per $1k of it.
         churnIntensity,
+        trendStrengthPct: Number(trend.strengthPct().toFixed(3)),
+        trendPaused,
         boostedVolumeUsd: Number((pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000)).toFixed(2)),
         netCostUsd: Number((pnl.makerFeesUsd + pnl.takerFeesUsd + pnl.gasUsd - pnl.fundingUsd).toFixed(4)),
         costPer1kBoostedUsd:

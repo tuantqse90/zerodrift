@@ -455,6 +455,14 @@ export default function App() {
                     <span className={`intensity-badge i-${engine.churnIntensity}`}>{engine.churnIntensity}</span>
                   </div>
                 )}
+                {engine.trendStrengthPct != null && (
+                  <div className="kv">
+                    <span className="k">TREND</span>
+                    <span className={`mono ${engine.trendPaused ? "v-warn" : ""}`}>
+                      {engine.trendStrengthPct.toFixed(2)}%{engine.trendPaused ? " · sitting out" : ""}
+                    </span>
+                  </div>
+                )}
                 <div className="kv">
                   <span className="k">ROUND TRIPS</span>
                   <span className="mono">{engine.roundTrips}</span>

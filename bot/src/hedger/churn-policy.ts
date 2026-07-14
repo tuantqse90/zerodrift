@@ -18,7 +18,15 @@
 import type { PerplBook } from "../lib/perpl";
 import { HEDGER_CONFIG } from "./config";
 
-export type ChurnIntensity = "aggressive" | "normal" | "light" | "paused" | "guard" | "waiting" | "thin-book";
+export type ChurnIntensity =
+  | "aggressive"
+  | "normal"
+  | "light"
+  | "paused"
+  | "guard"
+  | "waiting"
+  | "thin-book"
+  | "trend";
 
 export interface ChurnDecision {
   churn: boolean;
@@ -56,7 +64,27 @@ export class ChurnPolicy {
     return (intMs - (nowMs % intMs)) / 1000;
   }
 
-  decide(shortMon: number, book: PerplBook | null, earnApr: number, nowMs: number, rand: number): ChurnDecision {
+  decide(
+    shortMon: number,
+    book: PerplBook | null,
+    earnApr: number,
+    nowMs: number,
+    rand: number,
+    trendPaused = false,
+    trendStrengthPct = 0,
+  ): ChurnDecision {
+    // Trend gate first: never open a fresh cycle into a fast move (adverse selection
+    // would swamp the 0.9bps maker edge). An in-flight cycle still completes.
+    if (trendPaused) {
+      return {
+        churn: false,
+        clipMon: 0,
+        intensity: "trend",
+        reason: `market trending ${trendStrengthPct.toFixed(2)}% — sitting out adverse selection`,
+        mult: 0,
+      };
+    }
+
     const { mult, label } = this.regime(earnApr);
     if (mult <= 0) {
       return { churn: false, clipMon: 0, intensity: "paused", reason: `funding costs shorts ${earnApr.toFixed(1)}% APR`, mult };

@@ -20,6 +20,14 @@ export interface HedgerConfig {
   churnDepthCapPct: number;
   /** Skip starting a churn within this window before funding settlement (keep full short). */
   fundingSettleGuardSec: number;
+  /** Trend filter: lookback window for the mid-price move that gates churn. */
+  trendWindowMs: number;
+  /** Pause churn when |mid move| over the window exceeds this % (adverse-selection guard). */
+  trendPausePct: number;
+  /** Resume churn once the move falls back below this % (hysteresis, < pause). */
+  trendResumePct: number;
+  /** Probability a soft-band delta correction is trued up on the SPOT leg instead of the perp. */
+  spotRebalanceProb: number;
   deltaSoftPct: number;
   deltaHardPct: number;
   /** +1: rate>0 ⇒ longs pay shorts (we earn on our short). Flip to -1 if proven inverted. */
@@ -54,6 +62,10 @@ export const HEDGER_CONFIG: HedgerConfig = {
   fundingBoostApr: envNum("HEDGER_FUNDING_BOOST_APR", 10),
   churnDepthCapPct: envNum("HEDGER_CHURN_DEPTH_CAP_PCT", 0.5),
   fundingSettleGuardSec: envNum("HEDGER_FUNDING_SETTLE_GUARD_SEC", 120),
+  trendWindowMs: envNum("HEDGER_TREND_WINDOW_MS", 120_000),
+  trendPausePct: envNum("HEDGER_TREND_PAUSE_PCT", 1.0),
+  trendResumePct: envNum("HEDGER_TREND_RESUME_PCT", 0.4),
+  spotRebalanceProb: envNum("HEDGER_SPOT_REBALANCE_PROB", 0.35),
   deltaSoftPct: envNum("HEDGER_DELTA_SOFT_PCT", 1),
   deltaHardPct: envNum("HEDGER_DELTA_HARD_PCT", 3),
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,

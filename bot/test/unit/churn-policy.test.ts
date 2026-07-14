@@ -85,6 +85,20 @@ describe("ChurnPolicy safety rails", () => {
     expect(policy().decide(1000, null, 17.5, NOW_MID, 0.5).churn).toBe(false);
   });
 
+  test("trend gate: a fast move sits out even in the aggressive regime", () => {
+    // Same inputs that would churn AGGRESSIVE, but trendPaused=true wins.
+    const d = policy().decide(1000, thickBook, 17.5, NOW_MID, 0.5, true, 1.8);
+    expect(d.churn).toBe(false);
+    expect(d.intensity).toBe("trend");
+    expect(d.reason).toContain("1.80%");
+  });
+
+  test("trend gate: calm market (trendPaused=false) churns normally", () => {
+    const d = policy().decide(1000, thickBook, 17.5, NOW_MID, 0.5, false, 0.2);
+    expect(d.churn).toBe(true);
+    expect(d.intensity).toBe("aggressive");
+  });
+
   test("jitter stays within ±15% before caps", () => {
     // small short + thick book so neither cap binds; normal regime (mult 1, 25%).
     const lo = policy().decide(1000, thickBook, 5, NOW_MID, 0).clipMon; // jitter 0.85

@@ -41,6 +41,10 @@ export interface EngineStatus {
   fundingUsd: number;
   fundingAprPct: number;
   churnIntensity?: string;
+  /** Absolute mid move over the trend window (%). */
+  trendStrengthPct?: number;
+  /** True while churn is sitting out a strong trend. */
+  trendPaused?: boolean;
   boostedVolumeUsd?: number;
   netCostUsd?: number;
   costPer1kBoostedUsd?: number;
