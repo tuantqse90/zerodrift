@@ -25,6 +25,12 @@ export interface EngineStatus {
   marketName: string;
   mid: number;
   deltaPct: number;
+  /** Signed raw delta (+ spot-heavy, − short-heavy) — drives the gauge needle position. */
+  deltaSignedPct?: number;
+  /** Churn-adjusted delta = true hedge drift (excludes the intentional churn gap). */
+  driftPct?: number;
+  /** Fraction of the short a churn cycle closes/reopens — sets the gauge's outer band. */
+  churnFraction?: number;
   spotMon: number;
   shortMon: number;
   roundTrips: number;

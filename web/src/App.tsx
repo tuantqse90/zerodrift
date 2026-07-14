@@ -154,6 +154,73 @@ export default function App() {
     return "REBAL";
   }, [hasHedge, deltaPct]);
 
+  // The drift gauge shows YOUR hedge when you have one; otherwise it mirrors the
+  // live engine's own position (which churns 24/7) so the instrument actually moves
+  // with real data instead of sitting idle at zero.
+  const engineHasPos = !!engine && engine.spotMon > 0;
+
+  // Rolling drift-over-time series for the gauge trace. Sampled on a steady 4s
+  // cadence (finer than the engine's 5-min history) so churn pulses are visible.
+  const displaySigned = hasHedge ? deltaPct : engineHasPos ? engine?.deltaSignedPct ?? engine?.deltaPct ?? 0 : 0;
+  const armed = hasHedge || engineHasPos;
+  const sampleRef = useRef({ v: displaySigned, armed });
+  sampleRef.current = { v: displaySigned, armed };
+  const [trace, setTrace] = useState<number[]>([]);
+  useEffect(() => {
+    const push = () => {
+      if (!sampleRef.current.armed) return;
+      setTrace((prev) => {
+        const next = [...prev, sampleRef.current.v];
+        return next.length > 90 ? next.slice(-90) : next;
+      });
+    };
+    push();
+    const t = setInterval(push, 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  const gauge = hasHedge
+    ? {
+        spotMon: hedgeSpotMon,
+        spotUsd: hedgeSpotMon * (spotPx ?? mid ?? 0),
+        shortMon,
+        shortUsd: shortMon * (mid ?? 0),
+        deltaSignedPct: deltaPct, // already signed (spot−short)/spot
+        driftPct: Math.abs(deltaPct), // a manual hedge doesn't churn — drift == |delta|
+        churnMax: 5,
+        hasHedge: true,
+        stateLabel,
+        sourceLabel: "your hedge",
+        trace,
+      }
+    : engineHasPos
+      ? {
+          spotMon: engine!.spotMon,
+          spotUsd: engine!.spotMon * (mid ?? 0),
+          shortMon: engine!.shortMon,
+          shortUsd: engine!.shortMon * (mid ?? 0),
+          deltaSignedPct: engine!.deltaSignedPct ?? engine!.deltaPct,
+          driftPct: engine!.driftPct ?? engine!.deltaPct,
+          churnMax: Math.max(10, Math.round((engine!.churnFraction ?? 0.5) * 100)),
+          hasHedge: true,
+          stateLabel: engine!.state,
+          sourceLabel: "engine · paper",
+          trace,
+        }
+      : {
+          spotMon: 0,
+          spotUsd: 0,
+          shortMon: 0,
+          shortUsd: 0,
+          deltaSignedPct: 0,
+          driftPct: 0,
+          churnMax: 5,
+          hasHedge: false,
+          stateLabel: "STANDBY",
+          sourceLabel: undefined,
+          trace,
+        };
+
   const shortsEarn = fundingApr !== null && fundingApr > 0;
   const latestEpoch = epochs[0];
   const stats = candleStats(candles);
@@ -333,15 +400,7 @@ export default function App() {
             <PriceChart market={market} candles={candles} />
           </section>
           <div className="gauge-slim">
-            <DriftGauge
-              spotMon={hedgeSpotMon}
-              spotUsd={hedgeSpotMon * (spotPx ?? mid ?? 0)}
-              shortMon={shortMon}
-              shortUsd={shortMon * (mid ?? 0)}
-              deltaPct={deltaPct}
-              stateLabel={stateLabel}
-              hasHedge={hasHedge}
-            />
+            <DriftGauge {...gauge} />
           </div>
         </div>
 

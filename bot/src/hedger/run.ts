@@ -343,12 +343,31 @@ async function main(): Promise<void> {
       }
 
       // ── public status feed (served by the site's terminal card) ─────────
+      // Two deltas, on purpose:
+      //  • deltaPct  = RAW spot−short gap. Swings out to ~churnFraction during a
+      //    churn cycle then snaps back — this is the visible heartbeat the gauge
+      //    needle traces, and it's honest (the position really is momentarily
+      //    un-hedged mid-cycle).
+      //  • driftPct  = churn-ADJUSTED gap (subtract the clip we're committed to
+      //    re-open, pendingMon; 0 when idle). This is TRUE hedge health — the same
+      //    number the hard-delta guard judges — so the gauge can paint the churn
+      //    swing green (healthy) instead of alarm-red, and only redden on a real
+      //    breach.
+      const driftPct =
+        state.targetSizeMon > 0
+          ? Math.abs(((deltaMon - churner.pendingMon()) / state.targetSizeMon) * 100)
+          : 0;
       writeStatus({
         mode: MODE,
         state: state.state,
         marketName: market.name,
         mid,
         deltaPct: Number(deltaPct.toFixed(3)),
+        // Signed raw delta (+ = spot exceeds short, − = short exceeds spot) so the
+        // gauge can rest at dead-center and swing out during a churn cycle.
+        deltaSignedPct: Number((state.targetSizeMon > 0 ? (deltaMon / state.targetSizeMon) * 100 : 0).toFixed(3)),
+        driftPct: Number(driftPct.toFixed(3)),
+        churnFraction: CFG.churnFraction,
         spotMon: Number(state.spotMon.toFixed(2)),
         shortMon: Number(shortMon.toFixed(2)),
         roundTrips: churner.roundTrips,
