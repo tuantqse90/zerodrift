@@ -5,6 +5,7 @@ import { DriftGauge } from "./components/DriftGauge";
 import { EngineTerminal, useEngineStatus } from "./components/EngineTerminal";
 import { EpochHistory } from "./components/EpochHistory";
 import { HedgeConsole } from "./components/HedgeConsole";
+import { PriceChart, useCandles } from "./components/PriceChart";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
   fetchPerplMarket,
@@ -46,6 +47,7 @@ export default function App() {
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
   const engine = useEngineStatus();
+  const candles = useCandles(market);
 
   useEffect(() => {
     let live = true;
@@ -238,6 +240,19 @@ export default function App() {
           hasHedge={hasHedge}
         />
       </div>
+
+      <section className="card glass" style={{ marginBottom: 26 }}>
+        <div className="card-head">
+          <span className="title">
+            <i />
+            MON-perp · 15m
+          </span>
+          <span className="meta mono">
+            Perpl candles · last {candles.length ? candles[candles.length - 1].c.toFixed(6) : "—"}
+          </span>
+        </div>
+        <PriceChart market={market} candles={candles} />
+      </section>
 
       <div className="statstrip">
         <div className="inner glass">

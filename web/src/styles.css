@@ -820,3 +820,46 @@ footer {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* ── price chart ────────────────────────────────────────────────────────── */
+.chart-svg { width: 100%; display: block; }
+.chart-svg .grid-line { stroke: hsl(var(--border) / 0.35); stroke-width: 1; }
+.chart-svg .axis-label {
+  fill: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.candle-up .wick, .candle-up .body { stroke: hsl(var(--mint)); stroke-width: 1.5; }
+.candle-down .wick { stroke: hsl(0 84% 70%); stroke-width: 1.5; }
+.candle-down .body { fill: hsl(0 84% 70%); stroke: hsl(0 84% 70%); stroke-width: 1; }
+.chart-svg .last-line {
+  stroke: hsl(var(--primary) / 0.8);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+}
+.chart-svg .last-chip.up { fill: hsl(var(--mint) / 0.16); stroke: hsl(var(--mint) / 0.5); }
+.chart-svg .last-chip.down { fill: hsl(0 72% 51% / 0.16); stroke: hsl(0 72% 51% / 0.5); }
+.chart-svg .last-chip-text {
+  fill: hsl(var(--foreground));
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.chart-svg .crosshair { stroke: hsl(var(--foreground) / 0.25); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart-tip {
+  position: absolute;
+  top: 8px;
+  background: hsl(var(--card) / 0.95);
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.chart-tip .tt-time { color: hsl(var(--muted-foreground)); font-size: 10px; margin-bottom: 4px; }
+.chart-tip .up { color: hsl(var(--mint)); }
+.chart-tip .down { color: hsl(0 84% 70%); }
+.chart-tip .tt-vol { color: hsl(var(--muted-foreground)); margin-top: 4px; }

@@ -13,6 +13,8 @@ export interface PerplMarketInfo {
   orderTtlBlocks: number;
   initialMarginFrac: number;
   pointsBoostBps: number;
+  /** Decimals of the collateral token (AUSD) — used for Amount fields like candle volume. */
+  collateralDecimals: number;
 }
 
 export interface BookLevel {
@@ -43,7 +45,8 @@ export const PERPL_CHAIN_ID = Number(import.meta.env.VITE_PERPL_CHAIN_ID) || 143
 export async function fetchPerplMarket(name: string): Promise<PerplMarketInfo> {
   const res = await fetch(`${PERPL_API}/v1/pub/context`);
   if (!res.ok) throw new Error(`perpl context HTTP ${res.status}`);
-  const ctx = (await res.json()) as { markets?: any[] };
+  const ctx = (await res.json()) as { markets?: any[]; instances?: any[]; tokens?: any[] };
+  const collateral = (ctx.tokens ?? []).find((t: any) => t.id === ctx.instances?.[0]?.collateral_token_id);
   const m = (ctx.markets ?? []).find(
     (x) => x.config?.is_open && (x.symbol === name || x.name === name || x.name?.split(" ")[0] === name),
   );
@@ -59,6 +62,7 @@ export async function fetchPerplMarket(name: string): Promise<PerplMarketInfo> {
     orderTtlBlocks: m.order_ttl_blocks ?? 20,
     initialMarginFrac: m.config.initial_margin ?? 1000,
     pointsBoostBps: m.points_boost_bps ?? 10_000,
+    collateralDecimals: collateral?.decimals ?? 6,
   };
 }
 
@@ -182,4 +186,104 @@ export class PerplFeed {
 
 export function fundingAprPct(rateMicros: number, intervalSec: number): number {
   return (rateMicros / 1_000_000) * ((365 * 24 * 3600) / intervalSec) * 100;
+}
+
+// ── candles ───────────────────────────────────────────────────────────────────
+
+export interface Candle {
+  t: number; // open time ms
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number; // volume (human size units)
+}
+
+/**
+ * Live candle feed for one market/resolution: snapshot mt:11, updates mt:12
+ * (last closed + current forming candle). Keeps the most recent `keep` candles.
+ */
+export class CandleFeed {
+  candles: Candle[] = [];
+  onUpdate: (() => void) | null = null;
+
+  private ws: WebSocket | null = null;
+  private stopped = false;
+  private retry = 0;
+  private pingTimer: number | null = null;
+
+  constructor(
+    private readonly market: PerplMarketInfo,
+    private readonly resolutionSec: number,
+    private readonly keep = 64,
+  ) {}
+
+  start(): void {
+    this.stopped = false;
+    this.connect();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.ws?.close();
+  }
+
+  private unscale(raw: any): Candle {
+    const pd = 10 ** this.market.priceDecimals;
+    const cd = 10 ** this.market.collateralDecimals;
+    // v is an Amount in collateral units (USD notional), not base size.
+    return { t: raw.t, o: raw.o / pd, h: raw.h / pd, l: raw.l / pd, c: raw.c / pd, v: Number(raw.v ?? 0) / cd };
+  }
+
+  private connect(): void {
+    if (this.stopped) return;
+    const ws = new WebSocket(`${PERPL_WS}/ws/v1/market-data`);
+    this.ws = ws;
+    ws.onopen = () => {
+      this.retry = 0;
+      ws.send(
+        JSON.stringify({
+          mt: 5,
+          subs: [{ stream: `candles@${this.market.id}*${this.resolutionSec}`, subscribe: true }],
+        }),
+      );
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      this.pingTimer = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ mt: 1, t: Date.now() }));
+      }, 25_000);
+    };
+    ws.onmessage = (ev) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      if (msg.mt === 11) {
+        this.candles = (msg.d ?? []).map((c: any) => this.unscale(c)).slice(-this.keep);
+        this.onUpdate?.();
+      } else if (msg.mt === 12) {
+        for (const raw of msg.d ?? []) {
+          const c = this.unscale(raw);
+          const i = this.candles.findIndex((x) => x.t === c.t);
+          if (i >= 0) this.candles[i] = c;
+          else {
+            this.candles.push(c);
+            if (this.candles.length > this.keep) this.candles.shift();
+          }
+        }
+        this.onUpdate?.();
+      }
+    };
+    ws.onclose = () => {
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      if (!this.stopped) {
+        const delay = Math.min(1000 * 2 ** this.retry, 30_000);
+        this.retry += 1;
+        setTimeout(() => this.connect(), delay);
+      }
+    };
+    ws.onerror = () => ws.close();
+  }
 }
