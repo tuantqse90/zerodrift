@@ -4,6 +4,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { alertOnce } from "../lib/telegram";
+import { pushEvent } from "./status";
 
 export type HedgerState =
   | "INIT"
@@ -73,5 +74,6 @@ export function transition(s: DurableState, to: HedgerState, reason: string): vo
   s.state = to;
   saveState(s);
   console.log(`[${new Date().toISOString()}] state ${from} → ${to} (${reason})`);
+  pushEvent("state", `state ${from} → ${to} (${reason})`);
   void alertOnce(`ph:state:${from}-${to}`, 300_000, `🌀 ZeroDrift: ${from} → ${to}\n${reason}`);
 }

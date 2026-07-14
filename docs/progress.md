@@ -107,3 +107,17 @@ Killed: purple radial wash, uniform rounded cards, flat stat strip.
 ~440px and crops the PNG to 390 → mobile screenshots showed phantom overflow. Ground
 truth via 390px iframe measurement (scrollWidth 384) + real-browser zoom: mobile is
 clean. Deployed to production, bundle verified (index-CYmWVlnq.js).
+
+## Day 1 (cont.) — ALL DATA LIVE (no hardcode)
+
+User asked whether page data was real. Audit: ticker/book/epochs/fees/boost were already
+live; the terminal log + 3 statstrip numbers were static. Fixed properly:
+- Engine now runs as `zd-hedger` container ON THE VPS (paper mode, live mainnet data,
+  --network host, NT api via localhost:8421) and mirrors its recent events + totals to
+  `/opt/zerodrift/status/status.json` (atomic rename; HEDGER_STATUS_FILE env).
+- Caddy serves it at `/status.json` (no-store); the site's terminal card polls every 10s
+  → the landing page streams the engine's REAL rolling log (fills, state transitions,
+  round-trips, week volume, fees). Stale >60s shows an honest warning line.
+- Statstrip now fully derived: maker fee + boost from Perpl context, round-trip = 2×maker,
+  funding from WS, round-trips + week volume from the engine feed.
+- Local Mac paper run retired in favor of the VPS runner (ledgers kept in bot/data).

@@ -24,6 +24,7 @@ import { PnlLedger } from "./pnl";
 import { closeEpochOnChain, openEpochOnChain } from "./registry";
 import { buySpotMon, sellSpotMon, spotPriceUsd } from "./spot";
 import { loadState, saveState, transition } from "./state";
+import { pushEvent, writeStatus } from "./status";
 
 const MODE = CFG.live ? "LIVE" : "PAPER";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
       `[${new Date().toISOString()}] fill ${f.maker ? "maker" : "taker"} ${f.sz.toFixed(4)} @ ${f.px} ` +
         `fee=$${f.feeUsd.toFixed(4)} (${f.intentId})`,
     );
+    pushEvent("fill", `fill ${f.maker ? "maker" : "taker"} ${f.sz.toFixed(4)} @ ${f.px} fee=$${f.feeUsd.toFixed(4)}`);
   });
 
   await announceOnlineOnce(
@@ -306,6 +308,34 @@ async function main(): Promise<void> {
           process.exit(0);
         }
       }
+
+      // ── public status feed (served by the site's terminal card) ─────────
+      writeStatus({
+        mode: MODE,
+        state: state.state,
+        marketName: market.name,
+        mid,
+        deltaPct: Number(deltaPct.toFixed(3)),
+        spotMon: Number(state.spotMon.toFixed(2)),
+        shortMon: Number(shortMon.toFixed(2)),
+        roundTrips: churner.roundTrips,
+        fillCount: pnl.fillCount,
+        weekVolumeUsd: Number(pnl.weekVolume().toFixed(2)),
+        makerFeesUsd: Number(pnl.makerFeesUsd.toFixed(4)),
+        takerFeesUsd: Number(pnl.takerFeesUsd.toFixed(4)),
+        fundingUsd: Number(pnl.fundingUsd.toFixed(4)),
+        fundingAprPct: Number(funding.earnAprPct().toFixed(2)),
+        config: {
+          leverageX: CFG.leverage / 100,
+          churnMin: CFG.churnIntervalMs / 60_000,
+          churnFraction: CFG.churnFraction,
+          softPct: CFG.deltaSoftPct,
+          hardPct: CFG.deltaHardPct,
+          makerFeeBps: market.makerFeeMicros / 100,
+          takerFeeBps: market.takerFeeMicros / 100,
+          pointsBoostX: market.pointsBoostBps / 10_000,
+        },
+      });
 
       // ── periodic digest ──────────────────────────────────────────────────
       if (Date.now() - lastDigest > CFG.digestMs) {

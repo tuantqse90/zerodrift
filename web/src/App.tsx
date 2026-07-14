@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { BookLadder } from "./components/BookLadder";
 import { DriftGauge } from "./components/DriftGauge";
+import { EngineTerminal, useEngineStatus } from "./components/EngineTerminal";
 import { EpochHistory } from "./components/EpochHistory";
 import { HedgeConsole } from "./components/HedgeConsole";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
@@ -44,6 +45,7 @@ export default function App() {
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
+  const engine = useEngineStatus();
 
   useEffect(() => {
     let live = true;
@@ -230,15 +232,15 @@ export default function App() {
       <div className="statstrip">
         <div className="inner glass">
           <div className="stat">
-            <div className="v mint">0.9bps</div>
+            <div className="v mint">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</div>
             <div className="k">MAKER FEE</div>
           </div>
           <div className="stat">
-            <div className="v">~1.8bps</div>
+            <div className="v">{market ? `~${((market.makerFeeMicros / 100) * 2).toFixed(1)}bps` : "—"}</div>
             <div className="k">CHURN ROUND TRIP</div>
           </div>
           <div className="stat">
-            <div className="v">2×</div>
+            <div className="v">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}×` : "—"}</div>
             <div className="k">MON POINTS BOOST</div>
           </div>
           <div className="stat">
@@ -248,8 +250,12 @@ export default function App() {
             <div className="k">FUNDING APR</div>
           </div>
           <div className="stat">
-            <div className="v">2.0×</div>
-            <div className="k">LEVERAGE</div>
+            <div className="v">{engine ? engine.roundTrips : "—"}</div>
+            <div className="k">ENGINE ROUND TRIPS</div>
+          </div>
+          <div className="stat">
+            <div className="v mint">{engine ? `$${engine.weekVolumeUsd.toFixed(0)}` : "—"}</div>
+            <div className="k">ENGINE WEEK VOLUME</div>
           </div>
         </div>
       </div>
@@ -266,47 +272,7 @@ export default function App() {
         </div>
       )}
 
-      <section className="terminal glass-strong" aria-label="Hedging engine log">
-        <div className="t-head">
-          <span className="dot r" />
-          <span className="dot y" />
-          <span className="dot g" />
-          <span className="t-title">zerodrift — hedging engine (paper session, live mainnet data)</span>
-          <span className="t-right">bun run hedger</span>
-        </div>
-        <div className="t-body">
-          <div>
-            <span className="dim">$</span> bun run hedger
-          </div>
-          <div className="dim">
-            market 10 "MON" · maker 0.9bps taker 6.9bps · ttl 20 blocks · points boost <span className="violet">2×</span>
-          </div>
-          <div>
-            <span className="dim">[04:02:56]</span> fill <span className="mint">maker</span> 1294.9860 @ 0.021991
-            fee=<span className="mint">$0.0026</span>
-          </div>
-          <div>
-            <span className="dim">[04:02:59]</span> state CHURNING → <span className="mint">HEDGED</span>{" "}
-            <span className="dim">(round-trip #3 complete)</span>
-          </div>
-          <div>
-            <span className="dim">[04:06:18]</span> fill <span className="mint">maker</span> 1130.9350 @ 0.022025
-            fee=<span className="mint">$0.0022</span>
-          </div>
-          <div>
-            <span className="dim">[04:19:59]</span> state CHURNING → <span className="mint">HEDGED</span>{" "}
-            <span className="dim">(round-trip #4 complete)</span>
-          </div>
-          <div>
-            <span className="dim">[04:39:22]</span> fill <span className="mint">maker</span> 1150.8216 @ 0.022144
-            fee=<span className="mint">$0.0023</span> <span className="amber">← round-trip #5 in flight</span>
-          </div>
-        </div>
-        <div className="t-foot">
-          Real output — the engine has been running against live mainnet data since deploy. Runs headless, alerts to
-          Telegram, unwinds itself on margin pressure.
-        </div>
-      </section>
+      <EngineTerminal status={engine} />
 
       <div className="deck">
         <section className="card glass">
