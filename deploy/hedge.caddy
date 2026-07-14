@@ -24,9 +24,18 @@ hedge.nullterminal.xyz {
 		header Access-Control-Allow-Origin "*"
 	}
 
+	# Hashed assets are content-addressed → cache hard. The HTML shell must always
+	# revalidate so a redeploy is picked up immediately (no stale bundle).
+	handle /assets/* {
+		root * /opt/zerodrift/web
+		file_server
+		header Cache-Control "public, max-age=31536000, immutable"
+	}
+
 	handle {
 		root * /opt/zerodrift/web
 		try_files {path} /index.html
 		file_server
+		header Cache-Control "no-cache"
 	}
 }
