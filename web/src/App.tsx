@@ -21,7 +21,7 @@ function useBlockNumber(): bigint | null {
   useEffect(() => {
     const tick = () => publicClient.getBlockNumber().then(setBlock).catch(() => {});
     tick();
-    const t = setInterval(tick, 5000);
+    const t = setInterval(tick, 2000);
     return () => clearInterval(t);
   }, []);
   return block;
@@ -82,7 +82,7 @@ export default function App() {
   useEffect(() => {
     const tick = () => spotPriceUsd().then((p) => p && setSpotPx(p));
     tick();
-    const t = setInterval(tick, 20_000);
+    const t = setInterval(tick, 10_000);
     return () => clearInterval(t);
   }, []);
 
@@ -125,6 +125,49 @@ export default function App() {
   const shortsEarn = fundingApr !== null && fundingApr > 0;
   const latestEpoch = epochs[0];
 
+  const TickerItems = ({ ariaHidden }: { ariaHidden?: boolean }) => (
+    <span style={{ display: "inline-flex", gap: 44 }} aria-hidden={ariaHidden || undefined}>
+
+          <span>
+            <span className="t-label">MON-PERP</span>
+            <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">SPOT</span>
+            <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">FUNDING</span>
+            <span className={`t-val ${fundingApr === null ? "" : shortsEarn ? "up" : "down"}`}>
+              {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR`}
+            </span>
+            <span className="t-label" style={{ marginLeft: 7 }}>
+              {fundingApr === null ? "" : shortsEarn ? "SHORTS EARN" : "SHORTS PAY"}
+            </span>
+          </span>
+          <span>
+            <span className="t-label">MAKER</span>
+            <span className="t-val up">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">TAKER</span>
+            <span className="t-val">{market ? `${(market.takerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">POINTS</span>
+            <span className="t-val violet">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}× BOOST` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">SPREAD</span>
+            <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
+          </span>
+          <span>
+            <span className="t-label">BLOCK</span>
+            <span className="t-val">{blockNumber ? blockNumber.toLocaleString() : "—"}</span>
+          </span>
+    </span>
+  );
+
   return (
     <div className="wrap">
       <a href="#console" className="sr-only">
@@ -156,43 +199,10 @@ export default function App() {
       </nav>
 
       <div className="ticker mono" aria-label="Live market data">
-        <span>
-          <span className="t-label">MON-PERP</span>
-          <span className="t-val">{mid ? `$${mid.toFixed(6)}` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">SPOT</span>
-          <span className="t-val">{spotPx ? `$${spotPx.toFixed(6)}` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">FUNDING</span>
-          <span className={`t-val ${fundingApr === null ? "" : shortsEarn ? "up" : "down"}`}>
-            {fundingApr === null ? "—" : `${fundingApr > 0 ? "+" : ""}${fundingApr.toFixed(1)}% APR`}
-          </span>
-          <span className="t-label" style={{ marginLeft: 7 }}>
-            {fundingApr === null ? "" : shortsEarn ? "SHORTS EARN" : "SHORTS PAY"}
-          </span>
-        </span>
-        <span>
-          <span className="t-label">MAKER</span>
-          <span className="t-val up">{market ? `${(market.makerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">TAKER</span>
-          <span className="t-val">{market ? `${(market.takerFeeMicros / 100).toFixed(1)}bps` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">POINTS</span>
-          <span className="t-val violet">{market ? `${(market.pointsBoostBps / 10_000).toFixed(0)}× BOOST` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">SPREAD</span>
-          <span className="t-val">{spreadBps !== null ? `${spreadBps.toFixed(2)}bps` : "—"}</span>
-        </span>
-        <span>
-          <span className="t-label">BLOCK</span>
-          <span className="t-val">{blockNumber ? blockNumber.toLocaleString() : "—"}</span>
-        </span>
+        <div className="track">
+          <TickerItems />
+          <TickerItems ariaHidden />
+        </div>
       </div>
 
       <header className="hero">
