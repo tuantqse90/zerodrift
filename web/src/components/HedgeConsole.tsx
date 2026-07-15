@@ -70,6 +70,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const bookRef = useRef(book);
   bookRef.current = book;
   const midBuf = useRef<number[]>([]); // rolling mids for the AS vol estimate
+  const workStartRef = useRef(0); // when the current open/close began (for the taker fallback)
 
   useEffect(() => {
     if (!address) return;
@@ -146,27 +147,46 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   useEffect(() => {
     if (working === "idle" || !session || !market) return;
     const target = hedge?.targetMon ?? 0;
+    workStartRef.current = Date.now();
     const t = setInterval(() => {
       if (!session.ready) return;
       const b = bookRef.current;
       if (!b) return;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
+      const elapsed = Date.now() - workStartRef.current;
+      const opening = working === "opening";
+      const done = opening ? shortMon >= target * 0.99 : shortMon <= 0.01;
+      if (done) {
+        setWorking("idle");
+        setNote({
+          kind: "ok",
+          text: opening ? `Hedged: ${shortMon.toFixed(1)} MON short.` : "Perp leg closed — back to plain spot MON.",
+        });
+        return;
+      }
+      const side = opening ? "short-open" : "short-close";
+      const size = opening ? target - shortMon : shortMon;
+      const touch = opening ? b.asks[0].px : b.bids[0].px;
 
-      if (working === "opening") {
-        if (shortMon >= target * 0.99) {
-          setWorking("idle");
-          setNote({ kind: "ok", text: `Hedged: ${shortMon.toFixed(1)} MON short at maker fees.` });
-          return;
-        }
-        if (session.openOrders.size === 0) session.placeMaker("short-open", b.asks[0].px, target - shortMon);
+      // A maker order can hang in a trending market (it rests off-touch and never
+      // fills). After a grace period, cross the spread with a taker to guarantee the
+      // hedge opens/closes — a tiny one-time cost vs. staying un-hedged.
+      if (elapsed > 40_000) {
+        session.cancelAllMine();
+        session.placeTaker(side, size, 100);
+        setNote({ kind: "", text: `${opening ? "Opening" : "Closing"} via taker — market wasn't lifting the maker quote.` });
+        workStartRef.current = Date.now(); // give the taker time to settle before another
+        return;
+      }
+
+      const orders = [...session.openOrders.values()];
+      if (orders.length === 0) {
+        session.placeMaker(side, touch, size);
       } else {
-        if (shortMon <= 0.01) {
-          setWorking("idle");
-          setNote({ kind: "ok", text: "Perp leg closed. You're back to plain spot MON." });
-          return;
-        }
-        if (session.openOrders.size === 0) session.placeMaker("short-close", b.bids[0].px, shortMon);
+        // Follow the market: re-price the resting order if the touch moved away.
+        const o = orders[0];
+        if (Math.abs(o.px - touch) / touch > 0.0008) session.cancel(o.oid); // re-placed next tick
       }
     }, 4000);
     return () => clearInterval(t);
