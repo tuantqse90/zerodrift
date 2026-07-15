@@ -178,10 +178,37 @@ export class TradingSession {
     return this.nextRq;
   }
 
-  /** PostOnly maker order joined at px. Returns rq for correlation. */
+  /** Order-lifecycle log — open the console to audit exactly what was sent/filled. */
+  private log(...args: unknown[]): void {
+    console.log("[zerodrift]", ...args);
+  }
+
+  /**
+   * Refuse orders that can't be honestly placed: a size that rounds to 0 at the
+   * market's size decimals (MON orders are whole numbers — 0.4 MON would silently
+   * become s:0 and be rejected upstream), or placing before the first heartbeat
+   * (headBlock=0 ⇒ lb in the past ⇒ instant expiry).
+   */
+  private orderGuard(side: PerpSide, sizeMon: number): number | null {
+    const s = this.scaleSz(sizeMon);
+    if (s <= 0) {
+      this.log(`SKIP ${side} — size ${sizeMon.toFixed(4)} MON rounds to 0 at ${this.market.sizeDecimals} decimals`);
+      return null;
+    }
+    if (this.headBlock <= 0) {
+      this.log(`SKIP ${side} — no heartbeat yet (headBlock=0), lb would be stale`);
+      return null;
+    }
+    return s;
+  }
+
+  /** PostOnly maker order joined at px. Returns rq for correlation (-1 = not sent). */
   placeMaker(side: PerpSide, px: number, sizeMon: number): number {
     if (!this.ready) throw new Error("session not ready");
+    const s = this.orderGuard(side, sizeMon);
+    if (s === null || !(px > 0)) return -1;
     const rq = this.takeRq();
+    this.log(`place maker ${side} ${sizeMon.toFixed(2)} @ ${px} (rq ${rq})`);
     this.send({
       mt: 22,
       rq,
@@ -189,7 +216,7 @@ export class TradingSession {
       acc: this.account?.id ?? 0,
       t: ORDER_TYPE[side],
       p: this.scalePx(px),
-      s: this.scaleSz(sizeMon),
+      s,
       fl: 1,
       lv: this.leverageHundredths,
       lb: this.lb(),
@@ -199,7 +226,10 @@ export class TradingSession {
 
   placeTaker(side: PerpSide, sizeMon: number, slippageBps: number): number {
     if (!this.ready) throw new Error("session not ready");
+    const s = this.orderGuard(side, sizeMon);
+    if (s === null) return -1;
     const rq = this.takeRq();
+    this.log(`place TAKER ${side} ${sizeMon.toFixed(2)} (slippage ${slippageBps}bps, rq ${rq})`);
     this.send({
       mt: 22,
       rq,
@@ -207,7 +237,7 @@ export class TradingSession {
       acc: this.account?.id ?? 0,
       t: ORDER_TYPE[side],
       p: 0,
-      s: this.scaleSz(sizeMon),
+      s,
       ms: slippageBps,
       fl: 4,
       lv: this.leverageHundredths,
@@ -218,6 +248,7 @@ export class TradingSession {
 
   cancel(oid: number): void {
     if (!this.ready) return;
+    this.log(`cancel oid ${oid}`);
     this.send({
       mt: 22,
       rq: this.takeRq(),
@@ -309,6 +340,7 @@ export class TradingSession {
       if (ev.code === 3401) {
         this.status = "auth-failed";
         this.lastError = "Key rejected (3401). Check the token and private key.";
+        console.warn("[zerodrift] sign-in rejected (3401) — key/token mismatch");
         this.onChange?.();
         return; // don't hammer a bad key
       }
@@ -334,6 +366,7 @@ export class TradingSession {
         if (st) this.applyStats(st);
         this.retry = 0;
         this.status = "ready";
+        this.log(`session ready — account #${this.account?.id ?? "?"}, rq seeded at ${this.nextRq}`);
         this.onChange?.();
         break;
       }
@@ -353,8 +386,11 @@ export class TradingSession {
         for (const o of msg.d ?? []) {
           if (o.mkt !== this.market.id || o.oid === undefined) continue;
           if (o.r === true) {
+            if (this.openOrders.has(o.oid)) this.log(`order removed oid ${o.oid} (filled/canceled/expired)`);
             this.openOrders.delete(o.oid);
           } else if ((o.st ?? 0) === 2 || (o.st ?? 0) === 3) {
+            if (!this.openOrders.has(o.oid))
+              this.log(`order resting oid ${o.oid} t=${o.t} px ${(o.p ?? 0) / 10 ** this.market.priceDecimals}`);
             this.openOrders.set(o.oid, {
               oid: o.oid,
               rq: o.rq,
@@ -369,13 +405,12 @@ export class TradingSession {
       case 25:
         for (const f of msg.d ?? []) {
           if (f.mkt !== this.market.id) continue;
-          this.onFill?.({
-            oid: f.oid,
-            px: (f.p ?? 0) / 10 ** this.market.priceDecimals,
-            sz: (f.s ?? 0) / 10 ** this.market.sizeDecimals,
-            feeUsd: parseCollateral(f.f),
-            maker: f.l === 1,
-          });
+          const px = (f.p ?? 0) / 10 ** this.market.priceDecimals;
+          const sz = (f.s ?? 0) / 10 ** this.market.sizeDecimals;
+          const t = f.t ?? this.openOrders.get(f.oid)?.type;
+          const sideName = t === 2 ? "short-open" : t === 4 ? "short-close" : t === 1 ? "long-open" : t === 3 ? "long-close" : "?";
+          this.log(`FILL ${f.l === 1 ? "maker" : "taker"} ${sideName} ${sz} @ ${px} (oid ${f.oid})`);
+          this.onFill?.({ oid: f.oid, px, sz, feeUsd: parseCollateral(f.f), maker: f.l === 1 });
         }
         break;
       case 26:
@@ -398,6 +433,7 @@ export class TradingSession {
         if (typeof msg.h === "number") this.headBlock = msg.h;
         if (typeof msg.sn === "number") {
           if (this.lastSn !== undefined && msg.sn !== this.lastSn + 1) {
+            this.log(`heartbeat sn gap (${this.lastSn} → ${msg.sn}) — reconnecting for a fresh snapshot`);
             this.ws?.close();
             return;
           }

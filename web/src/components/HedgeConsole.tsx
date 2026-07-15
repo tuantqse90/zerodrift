@@ -71,6 +71,13 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   bookRef.current = book;
   const midBuf = useRef<number[]>([]); // rolling mids for the AS vol estimate
   const workStartRef = useRef(0); // when the current open/close began (for the taker fallback)
+  const takerArmRef = useRef(false); // cancel-then-taker is two-phase to avoid double fills
+  const churnGoalRef = useRef(0); // short size a churn close leg is working DOWN to
+  // Live hedge target the timer loops read. Keeping `hedge` itself OUT of effect deps
+  // matters: every fill mutates it (fillOids) and would otherwise tear down/re-create
+  // the loops — including the AS cleanup canceling both quotes on every single fill.
+  const hedgeTargetRef = useRef(0);
+  hedgeTargetRef.current = hedge?.targetMon ?? 0;
 
   useEffect(() => {
     if (!address) return;
@@ -146,18 +153,24 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   // maker keep-alive: keep one PostOnly order working while opening/closing
   useEffect(() => {
     if (working === "idle" || !session || !market) return;
-    const target = hedge?.targetMon ?? 0;
+    const minSize = 1 / 10 ** market.sizeDecimals; // smallest placeable order (1 MON here)
     workStartRef.current = Date.now();
+    takerArmRef.current = false;
     const t = setInterval(() => {
       if (!session.ready) return;
       const b = bookRef.current;
       if (!b) return;
+      const target = hedgeTargetRef.current;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
-      const elapsed = Date.now() - workStartRef.current;
       const opening = working === "opening";
-      const done = opening ? shortMon >= target * 0.99 : shortMon <= 0.01;
-      if (done) {
+      // Done when what's left is smaller than the minimum placeable order — a
+      // fractional remainder would round to size 0 and spam rejected orders.
+      const remaining = opening ? target - shortMon : shortMon;
+      if (remaining < minSize) {
+        // Cancel any remnant still resting (e.g. filled 19.6/20 → 0.4 left on the
+        // book) so a late fill can't push the short past the target after we go idle.
+        if (session.openOrders.size > 0) session.cancelAllMine();
         setWorking("idle");
         setNote({
           kind: "ok",
@@ -166,23 +179,28 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
         return;
       }
       const side = opening ? "short-open" : "short-close";
-      const size = opening ? target - shortMon : shortMon;
       const touch = opening ? b.asks[0].px : b.bids[0].px;
+      const orders = [...session.openOrders.values()];
 
-      // A maker order can hang in a trending market (it rests off-touch and never
-      // fills). After a grace period, cross the spread with a taker to guarantee the
-      // hedge opens/closes — a tiny one-time cost vs. staying un-hedged.
-      if (elapsed > 40_000) {
-        session.cancelAllMine();
-        session.placeTaker(side, size, 100);
-        setNote({ kind: "", text: `${opening ? "Opening" : "Closing"} via taker — market wasn't lifting the maker quote.` });
-        workStartRef.current = Date.now(); // give the taker time to settle before another
+      // Taker fallback is TWO-PHASE: first cancel the maker, then only fire the
+      // taker once the book confirms nothing rests. Doing both in one tick risks the
+      // in-flight maker filling anyway → double position.
+      if (takerArmRef.current) {
+        if (orders.length > 0) return; // cancel not confirmed yet
+        takerArmRef.current = false;
+        workStartRef.current = Date.now();
+        session.placeTaker(side, remaining, 100); // remaining re-read AFTER any late maker fill
+        setNote({ kind: "", text: `${opening ? "Opening" : "Closing"} via taker — the maker quote wasn't getting lifted.` });
+        return;
+      }
+      if (Date.now() - workStartRef.current > 40_000) {
+        takerArmRef.current = true;
+        if (orders.length > 0) session.cancelAllMine();
         return;
       }
 
-      const orders = [...session.openOrders.values()];
       if (orders.length === 0) {
-        session.placeMaker(side, touch, size);
+        session.placeMaker(side, touch, remaining);
       } else {
         // Follow the market: re-price the resting order if the touch moved away.
         const o = orders[0];
@@ -190,44 +208,68 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       }
     }, 4000);
     return () => clearInterval(t);
-  }, [working, session, market, hedge]);
+  }, [working, session, market]);
 
-  // churn loop (tab-open only) — discrete close/re-open round-trips
+  // churn loop (tab-open only) — discrete close/re-open round-trips. Each leg works
+  // toward an explicit GOAL size and re-places only the REMAINING amount — re-posting
+  // the full clip after a partial fill + expiry would over-close/over-open the hedge.
   useEffect(() => {
     if (strategy !== "churn" || !churnOn || !session || !market) return;
+    const minSize = 1 / 10 ** market.sizeDecimals;
     const t = setInterval(() => {
       if (!session.ready || working !== "idle") return;
       const b = bookRef.current;
       if (!b) return;
+      const target = hedgeTargetRef.current;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
-      if (shortMon <= 0) return;
+      if (shortMon < minSize || target <= 0) return;
 
       if (churnPhase.current === "idle") {
         if (Date.now() - lastChurnAt.current < 15 * 60_000) return;
-        churnSize.current = shortMon * 0.25 * (0.8 + Math.random() * 0.4);
+        const clip = Math.max(minSize, shortMon * 0.25 * (0.8 + Math.random() * 0.4));
+        churnSize.current = clip;
+        churnGoalRef.current = Math.max(0, shortMon - clip); // close leg works down to this
         churnPhase.current = "closing";
         lastChurnAt.current = Date.now();
-        session.placeMaker("short-close", b.bids[0].px, churnSize.current);
-      } else if (session.openOrders.size === 0) {
-        if (churnPhase.current === "closing" && shortMon <= (hedge?.targetMon ?? 0) - churnSize.current * 0.9) {
+        session.placeMaker("short-close", b.bids[0].px, clip);
+        return;
+      }
+      if (session.openOrders.size > 0) return; // an order is working — let it fill or expire
+
+      if (churnPhase.current === "closing") {
+        const remaining = shortMon - churnGoalRef.current;
+        if (remaining < minSize) {
           churnPhase.current = "reopening";
-          session.placeMaker("short-open", b.asks[0].px, churnSize.current);
-        } else if (churnPhase.current === "reopening" && shortMon >= (hedge?.targetMon ?? 0) * 0.99) {
+          const reopen = target - shortMon;
+          if (reopen >= minSize) session.placeMaker("short-open", b.asks[0].px, reopen);
+        } else {
+          session.placeMaker("short-close", b.bids[0].px, remaining);
+        }
+      } else {
+        const remaining = target - shortMon;
+        if (remaining < minSize) {
           churnPhase.current = "idle";
           setNote({
             kind: "ok",
-            text: `Churn round-trip done — +$${(churnSize.current * b.bids[0].px * 2).toFixed(0)} maker volume.`,
+            text: `Churn round-trip done — +$${(churnSize.current * b.bids[0].px * 2).toFixed(2)} maker volume.`,
           });
         } else {
-          const side = churnPhase.current === "closing" ? "short-close" : "short-open";
-          const px = side === "short-close" ? b.bids[0].px : b.asks[0].px;
-          session.placeMaker(side, px, churnSize.current);
+          session.placeMaker("short-open", b.asks[0].px, remaining);
         }
       }
     }, 5000);
     return () => clearInterval(t);
-  }, [strategy, churnOn, session, market, working, hedge]);
+  }, [strategy, churnOn, session, market, working]);
+
+  // Turning auto-farm off (or switching strategy) must not leave orders working or a
+  // half-done churn phase behind.
+  useEffect(() => {
+    if (!churnOn && session) {
+      churnPhase.current = "idle";
+      if (session.openOrders.size > 0) session.cancelAllMine();
+    }
+  }, [churnOn, session]);
 
   // Avellaneda loop (tab-open only) — maintain a resting bid (buy-back) and ask
   // (add-short) around the AS reservation price; re-quote a side on price drift, pull
@@ -245,7 +287,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       if (buf.length > 40) buf.shift();
 
       const short = session.position.side === "short" ? session.position.sizeMon : 0;
-      const target = hedge?.targetMon ?? 0;
+      const target = hedgeTargetRef.current;
       if (short <= 0 || target <= 0) return;
 
       const q = avellanedaQuote({
@@ -288,7 +330,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       session.cancelAllMine();
       clearInterval(t);
     };
-  }, [strategy, churnOn, session, market, working, hedge]);
+  }, [strategy, churnOn, session, market, working]);
 
   const doConnect = async () => {
     const c = await connectWallet();

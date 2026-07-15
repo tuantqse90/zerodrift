@@ -66,6 +66,8 @@ export interface FillEvent {
   sz: number; // human size (MON)
   feeUsd: number; // negative = rebate
   maker: boolean;
+  /** Order side of the fill (from the intent; undefined for unmatched external fills). */
+  side?: PerpSide;
   tsMs: number;
 }
 
@@ -615,6 +617,7 @@ export class LivePerplExecutor implements PerplExecutor {
       sz,
       feeUsd: parseAmount(f.f),
       maker: f.l === 1,
+      side: intent?.side,
       tsMs: f.at?.t ?? Date.now(),
     };
     for (const cb of this.fillCbs) cb(fill);
@@ -718,7 +721,7 @@ export class PaperPerplExecutor implements PerplExecutor {
     const mid = (book.bids[0].px + book.asks[0].px) / 2;
     const vwap = vwapForNotional(book, takerBuys ? "buy" : "sell", sizeMon * mid);
     const sz = Math.min(sizeMon, vwap.filledSz);
-    this.emitFill(id, this.oidSeq++, vwap.avgPx, sz, false);
+    this.emitFill(id, this.oidSeq++, vwap.avgPx, sz, false, side);
     this.applyFillToPosition(side, vwap.avgPx, sz);
     return id;
   }
@@ -746,16 +749,16 @@ export class PaperPerplExecutor implements PerplExecutor {
       if (sz <= 0) continue;
       intent.remainingSz -= sz;
       if (intent.remainingSz <= 1e-9) intent.active = false;
-      this.emitFill(intent.intentId, this.oidSeq++, intent.px, sz, true);
+      this.emitFill(intent.intentId, this.oidSeq++, intent.px, sz, true, intent.side);
       this.applyFillToPosition(intent.side, intent.px, sz);
     }
   }
 
-  private emitFill(intentId: string, oid: number, px: number, sz: number, maker: boolean): void {
+  private emitFill(intentId: string, oid: number, px: number, sz: number, maker: boolean, side?: PerpSide): void {
     const feeMicros = maker ? this.market.makerFeeMicros : this.market.takerFeeMicros;
     const feeUsd = (px * sz * feeMicros) / 1_000_000;
     this.bal.balanceUsd -= feeUsd;
-    const fill: FillEvent = { intentId, oid, px, sz, feeUsd, maker, tsMs: Date.now() };
+    const fill: FillEvent = { intentId, oid, px, sz, feeUsd, maker, side, tsMs: Date.now() };
     for (const cb of this.fillCbs) cb(fill);
   }
 

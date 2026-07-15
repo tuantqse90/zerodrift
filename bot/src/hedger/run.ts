@@ -113,11 +113,12 @@ async function main(): Promise<void> {
     rebalanceWorker?.handleFill(f);
     unwindWorker?.handleFill(f);
     churner.handleFill(f);
+    const dir = f.side ?? "?";
     console.log(
-      `[${new Date().toISOString()}] fill ${f.maker ? "maker" : "taker"} ${f.sz.toFixed(4)} @ ${f.px} ` +
+      `[${new Date().toISOString()}] fill ${f.maker ? "maker" : "taker"} ${dir} ${f.sz.toFixed(4)} @ ${f.px} ` +
         `fee=$${f.feeUsd.toFixed(4)} (${f.intentId})`,
     );
-    pushEvent("fill", `fill ${f.maker ? "maker" : "taker"} ${f.sz.toFixed(4)} @ ${f.px} fee=$${f.feeUsd.toFixed(4)}`);
+    pushEvent("fill", `fill ${f.maker ? "maker" : "taker"} ${dir} ${f.sz.toFixed(4)} @ ${f.px} fee=$${f.feeUsd.toFixed(4)}`);
   });
 
   await announceOnlineOnce(
