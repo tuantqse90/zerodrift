@@ -76,6 +76,13 @@ function parseAmount(a: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Collateral (AUSD) amounts arrive as 6-decimal scaled ints — balance, locked,
+ * volume, realized PnL, fees are all denominated in it. */
+const COLLATERAL_DECIMALS = 6;
+function parseCollateral(a: unknown): number {
+  return parseAmount(a) / 10 ** COLLATERAL_DECIMALS;
+}
+
 async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -210,8 +217,8 @@ export class TradingSession {
 
   private applyStats(s: any): void {
     this.stats = {
-      totalVolumeUsd: parseAmount(s.tv),
-      realizedPnlUsd: parseAmount(s.trp),
+      totalVolumeUsd: parseCollateral(s.tv),
+      realizedPnlUsd: parseCollateral(s.trp),
       trades: Number(s.tt) || 0,
       winRatePct: (Number(s.wr) || 0) / 100, // wr is bps
     };
@@ -296,7 +303,7 @@ export class TradingSession {
         const acc = (msg.as ?? [])[0];
         if (acc) {
           this.nextRq = Math.max(this.nextRq, Number(acc.lfr) || 0);
-          this.account = { id: acc.id, balanceUsd: parseAmount(acc.b), lockedUsd: parseAmount(acc.lb) };
+          this.account = { id: acc.id, balanceUsd: parseCollateral(acc.b), lockedUsd: parseCollateral(acc.lb) };
         }
         const st = (msg.sts ?? [])[0];
         if (st) this.applyStats(st);
@@ -312,7 +319,7 @@ export class TradingSession {
       case 21:
         if (this.account && msg.id === this.account.id) {
           this.nextRq = Math.max(this.nextRq, Number(msg.lfr) || 0);
-          this.account = { id: msg.id, balanceUsd: parseAmount(msg.b), lockedUsd: parseAmount(msg.lb) };
+          this.account = { id: msg.id, balanceUsd: parseCollateral(msg.b), lockedUsd: parseCollateral(msg.lb) };
           this.onChange?.();
         }
         break;
@@ -341,7 +348,7 @@ export class TradingSession {
             oid: f.oid,
             px: (f.p ?? 0) / 10 ** this.market.priceDecimals,
             sz: (f.s ?? 0) / 10 ** this.market.sizeDecimals,
-            feeUsd: parseAmount(f.f),
+            feeUsd: parseCollateral(f.f),
             maker: f.l === 1,
           });
         }
