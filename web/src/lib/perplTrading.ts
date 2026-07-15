@@ -166,7 +166,10 @@ export class TradingSession {
     return Math.round(px * 10 ** this.market.priceDecimals);
   }
   private scaleSz(sz: number): number {
-    return Math.round(sz * 10 ** this.market.sizeDecimals);
+    // Floor, never round: a 1.5-MON request must post 1 MON, not 2 — rounding up
+    // would trade MORE than the strategy intended. Epsilon absorbs float error so
+    // 0.9999999 still counts as 1.
+    return Math.floor(sz * 10 ** this.market.sizeDecimals + 1e-9);
   }
 
   private lb(): number {
@@ -314,6 +317,15 @@ export class TradingSession {
     this.ws = ws;
 
     ws.onopen = () => {
+      // Fresh connection ⇒ stale book-keeping. An order that died while we were
+      // disconnected never gets an r:true removal, so without this a phantom oid
+      // would sit in openOrders forever and stall every loop that waits for the
+      // book to clear. The post-signin snapshot (mt:23) rebuilds the real set.
+      if (this.openOrders.size > 0) {
+        this.log(`reconnect — dropping ${this.openOrders.size} stale open order(s), snapshot will rebuild`);
+        this.openOrders.clear();
+        this.onChange?.();
+      }
       const timestamp = Date.now().toString();
       const nonce = b64url(crypto.getRandomValues(new Uint8Array(16)));
       const canonical = [PERPL_CHAIN_ID, "trading-ws-signin", timestamp, nonce].join("\n");
@@ -410,7 +422,21 @@ export class TradingSession {
           const t = f.t ?? this.openOrders.get(f.oid)?.type;
           const sideName = t === 2 ? "short-open" : t === 4 ? "short-close" : t === 1 ? "long-open" : t === 3 ? "long-close" : "?";
           this.log(`FILL ${f.l === 1 ? "maker" : "taker"} ${sideName} ${sz} @ ${px} (oid ${f.oid})`);
+          // Apply the fill to the position OPTIMISTICALLY. Fills (mt:25), order
+          // removals (mt:24) and position updates (mt:27) arrive as separate frames;
+          // a timer tick landing between removal and position update would size its
+          // next order off a stale position — the double-fill race. The authoritative
+          // mt:26/27 frame overwrites this moments later.
+          if (t === 2 || t === 4) {
+            const cur = this.position.side === "short" ? this.position.sizeMon : 0;
+            const next = Math.max(0, cur + (t === 2 ? sz : -sz));
+            this.position =
+              next > 0
+                ? { side: "short", sizeMon: next, entryPx: this.position.side === "short" ? this.position.entryPx : px }
+                : { side: "flat", sizeMon: 0, entryPx: 0 };
+          }
           this.onFill?.({ oid: f.oid, px, sz, feeUsd: parseCollateral(f.f), maker: f.l === 1 });
+          this.onChange?.();
         }
         break;
       case 26:

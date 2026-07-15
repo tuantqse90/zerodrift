@@ -72,6 +72,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const midBuf = useRef<number[]>([]); // rolling mids for the AS vol estimate
   const workStartRef = useRef(0); // when the current open/close began (for the taker fallback)
   const takerArmRef = useRef(false); // cancel-then-taker is two-phase to avoid double fills
+  const armSnapRef = useRef<number | null>(null); // remaining snapshot for the quiescence gate
   const churnGoalRef = useRef(0); // short size a churn close leg is working DOWN to
   // Live hedge target the timer loops read. Keeping `hedge` itself OUT of effect deps
   // matters: every fill mutates it (fillOids) and would otherwise tear down/re-create
@@ -186,15 +187,30 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       // taker once the book confirms nothing rests. Doing both in one tick risks the
       // in-flight maker filling anyway → double position.
       if (takerArmRef.current) {
-        if (orders.length > 0) return; // cancel not confirmed yet
+        if (orders.length > 0) {
+          // Re-issue every tick (idempotent) — a cancel lost across a reconnect
+          // would otherwise leave this branch waiting forever.
+          session.cancelAllMine();
+          armSnapRef.current = null;
+          return;
+        }
+        // Quiescence gate: the fill (mt:25) / removal (mt:24) / position (mt:27)
+        // frames are independent, so an empty book alone doesn't prove `remaining`
+        // is current. Fire only after remaining holds steady across two ticks.
+        if (armSnapRef.current === null || Math.abs(armSnapRef.current - remaining) > 1e-9) {
+          armSnapRef.current = remaining;
+          return;
+        }
+        armSnapRef.current = null;
         takerArmRef.current = false;
         workStartRef.current = Date.now();
-        session.placeTaker(side, remaining, 100); // remaining re-read AFTER any late maker fill
+        session.placeTaker(side, remaining, 100);
         setNote({ kind: "", text: `${opening ? "Opening" : "Closing"} via taker — the maker quote wasn't getting lifted.` });
         return;
       }
       if (Date.now() - workStartRef.current > 40_000) {
         takerArmRef.current = true;
+        armSnapRef.current = null;
         if (orders.length > 0) session.cancelAllMine();
         return;
       }
@@ -223,7 +239,13 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       const target = hedgeTargetRef.current;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
-      if (shortMon < minSize || target <= 0) return;
+      if (target <= 0) return;
+      // Flat-short guard applies ONLY between cycles: mid-cycle a fully-closed leg
+      // (shortMon 0 on a small hedge) must still reach the reopening transition.
+      if (churnPhase.current === "idle" && shortMon < minSize) return;
+      // One resting order at a time — also guards the INITIAL clip against a stale
+      // quote left by a strategy switch that hasn't confirmed its cancel yet.
+      if (session.openOrders.size > 0) return;
 
       if (churnPhase.current === "idle") {
         if (Date.now() - lastChurnAt.current < 15 * 60_000) return;
@@ -235,7 +257,6 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
         session.placeMaker("short-close", b.bids[0].px, clip);
         return;
       }
-      if (session.openOrders.size > 0) return; // an order is working — let it fill or expire
 
       if (churnPhase.current === "closing") {
         const remaining = shortMon - churnGoalRef.current;
@@ -262,14 +283,17 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     return () => clearInterval(t);
   }, [strategy, churnOn, session, market, working]);
 
-  // Turning auto-farm off (or switching strategy) must not leave orders working or a
-  // half-done churn phase behind.
+  // Turning auto-farm off OR leaving the churn strategy must not leave orders working
+  // or a half-done churn phase behind (a stale "closing" phase would otherwise resume
+  // with a stale goal when churn is next enabled).
   useEffect(() => {
-    if (!churnOn && session) {
+    if ((!churnOn || strategy !== "churn") && session) {
       churnPhase.current = "idle";
-      if (session.openOrders.size > 0) session.cancelAllMine();
+      churnGoalRef.current = 0;
+      churnSize.current = 0;
+      if (!churnOn && session.openOrders.size > 0) session.cancelAllMine();
     }
-  }, [churnOn, session]);
+  }, [churnOn, strategy, session]);
 
   // Avellaneda loop (tab-open only) — maintain a resting bid (buy-back) and ask
   // (add-short) around the AS reservation price; re-quote a side on price drift, pull
@@ -365,9 +389,12 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   };
 
   const doOpen = () => {
-    const size = Number(sizeInput);
-    if (!size || size <= 0) {
-      setNote({ kind: "err", text: "Enter the MON size to hedge." });
+    const step = market ? 1 / 10 ** market.sizeDecimals : 1;
+    // Snap DOWN to the market's size grid — a fractional target on a whole-number
+    // market would leave the keep-alive chasing a remainder it can never place.
+    const size = Math.floor((Number(sizeInput) || 0) / step) * step;
+    if (size < step) {
+      setNote({ kind: "err", text: `Minimum hedge is ${step} MON.` });
       return;
     }
     if (size > monBalance) {
@@ -388,11 +415,12 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   // order is signed in-browser with the Perpl key — no wallet pop-ups, no per-trade
   // confirmation. Runs while this tab is open.
   const doAutoPilot = () => {
-    if (monBalance <= 0.0001) {
-      setNote({ kind: "err", text: "No MON to hedge — swap some USDC → MON first, then auto-pilot." });
+    const step = market ? 1 / 10 ** market.sizeDecimals : 1;
+    const size = Math.floor(monBalance / step) * step; // hedge what's actually placeable
+    if (size < step) {
+      setNote({ kind: "err", text: `You need at least ${step} MON to hedge — swap some USDC → MON first.` });
       return;
     }
-    const size = monBalance;
     const h: HedgeLocal = { targetMon: size, openedAt: Date.now(), epochId: null, fillOids: [] };
     setHedge(h);
     saveHedge(h);

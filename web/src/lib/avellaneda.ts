@@ -77,7 +77,10 @@ export const AS_DEFAULTS = {
  * small to place even the minimum without over-trading.
  */
 export function asClipSize(targetMon: number, sizeDecimals: number, minPostingAmount = 0): number {
-  const minSize = Math.max(minPostingAmount, 1 / 10 ** sizeDecimals);
-  const clip = Math.max(targetMon * AS_DEFAULTS.clipFrac, minSize);
+  const step = 1 / 10 ** sizeDecimals;
+  const minSize = Math.max(minPostingAmount, step);
+  // Snap DOWN to the market's size grid: a fractional clip (e.g. 1.5 MON on a
+  // whole-number market) must place 1 MON, never round up to 2.
+  const clip = Math.max(minSize, Math.floor(Math.max(targetMon * AS_DEFAULTS.clipFrac, minSize) / step) * step);
   return clip <= targetMon ? clip : 0;
 }
