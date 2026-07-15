@@ -65,7 +65,19 @@ export const AS_DEFAULTS = {
   minHalfBps: 2,
   maxHalfBps: 25,
   maxSkewBps: 8,
-  clipFrac: 0.02, // each quote = 2% of target
-  invBandFrac: 0.015, // pull a side once the short strays this far
+  clipFrac: 0.015, // each quote ≈ 1.5% of target (kept BELOW the band so one fill can't breach it)
+  invBandFrac: 0.03, // pull a side once the short strays this far
   repriceBps: 2, // re-quote a side only when its target price drifts this much
 };
+
+/**
+ * Order size for one AS quote: the target fraction, but never below the market's
+ * smallest placeable order (with size_decimals=0, MON orders are whole numbers, so a
+ * sub-1-MON clip would round to 0 and never post). Returns 0 if the target is too
+ * small to place even the minimum without over-trading.
+ */
+export function asClipSize(targetMon: number, sizeDecimals: number, minPostingAmount = 0): number {
+  const minSize = Math.max(minPostingAmount, 1 / 10 ** sizeDecimals);
+  const clip = Math.max(targetMon * AS_DEFAULTS.clipFrac, minSize);
+  return clip <= targetMon ? clip : 0;
+}

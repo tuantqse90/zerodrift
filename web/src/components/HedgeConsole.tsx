@@ -7,7 +7,7 @@ import { formatEther, keccak256, toHex, type Address, type WalletClient } from "
 import { connectWallet, eagerConnect, monad, publicClient, REGISTRY_ABI, REGISTRY_ADDRESS, watchAccount } from "../lib/chain";
 import type { PerplBook, PerplMarketInfo } from "../lib/perplFeed";
 import { clearKeys, loadKeys, saveKeys, TradingSession, type FillEvent } from "../lib/perplTrading";
-import { AS_DEFAULTS, avellanedaQuote, realizedVol } from "../lib/avellaneda";
+import { asClipSize, AS_DEFAULTS, avellanedaQuote, realizedVol } from "../lib/avellaneda";
 
 type Strategy = "churn" | "avellaneda";
 
@@ -241,7 +241,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
         maxSkewBps: AS_DEFAULTS.maxSkewBps,
       });
       const tick = 1 / 10 ** mkt.priceDecimals;
-      const clip = target * AS_DEFAULTS.clipFrac;
+      const clip = asClipSize(target, mkt.sizeDecimals);
       const overShort = short > target * (1 + AS_DEFAULTS.invBandFrac);
       const underShort = short < target * (1 - AS_DEFAULTS.invBandFrac);
       const bidPx = Math.min(q.bidPx, b.asks[0].px - tick); // rests on the bid, never crosses
