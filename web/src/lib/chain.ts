@@ -135,3 +135,31 @@ export async function connectWallet(): Promise<{ address: Address; wallet: Walle
   }
   return { address, wallet };
 }
+
+/** Reconnect silently if the wallet already authorized this site (no prompt). */
+export async function eagerConnect(): Promise<{ address: Address; wallet: WalletClient } | null> {
+  const eth = (window as any).ethereum;
+  if (!eth?.request) return null;
+  try {
+    const accounts: string[] = await eth.request({ method: "eth_accounts" });
+    if (!accounts?.length) return null;
+    return { address: accounts[0] as Address, wallet: createWalletClient({ chain: monad, transport: custom(eth) }) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Watch the injected wallet for account switches / disconnects so keys and the
+ * trading session can be re-scoped to the active address. Returns an unsubscribe fn.
+ */
+export function watchAccount(cb: (a: { address: Address; wallet: WalletClient } | null) => void): () => void {
+  const eth = (window as any).ethereum;
+  if (!eth?.on) return () => {};
+  const handler = (accounts: string[]) => {
+    if (!accounts?.length) return cb(null);
+    cb({ address: accounts[0] as Address, wallet: createWalletClient({ chain: monad, transport: custom(eth) }) });
+  };
+  eth.on("accountsChanged", handler);
+  return () => eth.removeListener?.("accountsChanged", handler);
+}

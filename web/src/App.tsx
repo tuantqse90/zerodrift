@@ -21,7 +21,7 @@ import {
   type PerplMarketInfo,
 } from "./lib/perplFeed";
 import { spotPriceUsd } from "./lib/nt";
-import { loadKeys, TradingSession } from "./lib/perplTrading";
+import { TradingSession } from "./lib/perplTrading";
 
 function useBlockNumber(): bigint | null {
   const [block, setBlock] = useState<bigint | null>(null);
@@ -116,13 +116,8 @@ export default function App() {
           });
         };
         feed.start();
-
-        const keys = loadKeys();
-        if (keys) {
-          const s = new TradingSession(m, keys);
-          s.start();
-          setSession(s);
-        }
+        // The trading session is started per-wallet by HedgeConsole once an address
+        // and its keys are known — never from a global blob at mount.
       })
       .catch(() => {});
     return () => {

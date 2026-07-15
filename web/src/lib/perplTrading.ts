@@ -10,11 +10,20 @@ export interface PerplKeys {
   edPrivHex: string;
 }
 
-const LS_KEY = "zerodrift.perpl-keys";
+// Keys are scoped PER WALLET — the Perpl account (and its enrolled API key) belongs
+// to the wallet that enrolled it, so switching wallets must load different keys (or
+// none). Legacy builds stored one global blob; it's migrated to the first wallet that
+// connects so existing setups aren't lost.
+const LS_PREFIX = "zerodrift.perpl-keys";
+const LS_LEGACY = "zerodrift.perpl-keys";
 
-export function loadKeys(): PerplKeys | null {
+function lsKey(address: string): string {
+  return `${LS_PREFIX}:${address.toLowerCase()}`;
+}
+
+function readAt(storageKey: string): PerplKeys | null {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const k = JSON.parse(raw) as PerplKeys;
     return k.apiKey && k.edPrivHex ? k : null;
@@ -23,12 +32,28 @@ export function loadKeys(): PerplKeys | null {
   }
 }
 
-export function saveKeys(k: PerplKeys): void {
-  localStorage.setItem(LS_KEY, JSON.stringify(k));
+export function loadKeys(address: string | null | undefined): PerplKeys | null {
+  if (!address) return null;
+  const scoped = readAt(lsKey(address));
+  if (scoped) return scoped;
+  // one-time migration of a pre-scoping global blob to this wallet
+  const legacy = readAt(LS_LEGACY);
+  if (legacy) {
+    saveKeys(address, legacy);
+    localStorage.removeItem(LS_LEGACY);
+    return legacy;
+  }
+  return null;
 }
 
-export function clearKeys(): void {
-  localStorage.removeItem(LS_KEY);
+export function saveKeys(address: string, k: PerplKeys): void {
+  if (!address) return;
+  localStorage.setItem(lsKey(address), JSON.stringify(k));
+}
+
+export function clearKeys(address: string): void {
+  if (!address) return;
+  localStorage.removeItem(lsKey(address));
 }
 
 function b64url(bytes: Uint8Array): string {

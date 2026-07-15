@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatEther, keccak256, toHex, type Address, type WalletClient } from "viem";
-import { connectWallet, monad, publicClient, REGISTRY_ABI, REGISTRY_ADDRESS } from "../lib/chain";
+import { connectWallet, eagerConnect, monad, publicClient, REGISTRY_ABI, REGISTRY_ADDRESS, watchAccount } from "../lib/chain";
 import type { PerplBook, PerplMarketInfo } from "../lib/perplFeed";
 import { clearKeys, loadKeys, saveKeys, TradingSession, type FillEvent } from "../lib/perplTrading";
 
@@ -47,6 +47,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const [churnOn, setChurnOn] = useState(false);
   const [note, setNote] = useState<{ kind: "ok" | "err" | ""; text: string }>({ kind: "", text: "" });
   const [hedge, setHedge] = useState<HedgeLocal | null>(loadHedge());
+  const [keysVersion, setKeysVersion] = useState(0); // bump to reload keys for the active wallet
   const [, force] = useState(0);
   const rerender = useCallback(() => force((n) => n + 1), []);
 
@@ -90,6 +91,40 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       rerender();
     };
   }, [session, rerender]);
+
+  // Silently restore the wallet on load if it's still authorized, then track account
+  // switches / disconnects — so keys and the session re-scope to the active address.
+  useEffect(() => {
+    eagerConnect().then((c) => {
+      if (c) {
+        setAddress(c.address);
+        setWallet(c.wallet);
+      }
+    });
+    return watchAccount((c) => {
+      setAddress(c?.address ?? null);
+      setWallet(c?.wallet ?? null);
+    });
+  }, []);
+
+  // The trading session is scoped PER WALLET: (re)start it from the connected wallet's
+  // own stored keys whenever the address, market, or keys change — never a global blob.
+  useEffect(() => {
+    if (!address || !market) {
+      setSession(null);
+      return;
+    }
+    const k = loadKeys(address);
+    if (!k) {
+      setSession(null);
+      return;
+    }
+    const s = new TradingSession(market, k);
+    s.start();
+    setSession(s);
+    return () => s.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, market, keysVersion]);
 
   // maker keep-alive: keep one PostOnly order working while opening/closing
   useEffect(() => {
@@ -169,23 +204,24 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   };
 
   const doSaveKeys = () => {
+    if (!address) {
+      setNote({ kind: "err", text: "Connect your wallet first — keys are stored per wallet." });
+      return;
+    }
     if (!apiKey.trim() || !edPriv.trim() || !market) {
       setNote({ kind: "err", text: "Both the API key token and the Ed25519 private key are required." });
       return;
     }
-    saveKeys({ apiKey: apiKey.trim(), edPrivHex: edPriv.trim() });
-    const s = new TradingSession(market, { apiKey: apiKey.trim(), edPrivHex: edPriv.trim() });
-    s.start();
-    setSession(s);
+    saveKeys(address, { apiKey: apiKey.trim(), edPrivHex: edPriv.trim() });
+    setKeysVersion((v) => v + 1); // the session effect starts it for this wallet
     setApiKey("");
     setEdPriv("");
   };
 
   const doClearKeys = () => {
-    session?.stop();
-    setSession(null);
-    clearKeys();
+    if (address) clearKeys(address);
     setChurnOn(false);
+    setKeysVersion((v) => v + 1); // the session effect tears it down (no keys)
   };
 
   const doOpen = () => {
@@ -236,7 +272,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     }
   };
 
-  const keys = loadKeys();
+  const keys = loadKeys(address);
   const pos = session?.position;
   const shortMon = pos?.side === "short" ? pos.sizeMon : 0;
   const midPx = book ? (book.bids[0].px + book.asks[0].px) / 2 : 0;
