@@ -244,6 +244,27 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     setNote({ kind: "", text: "Working a PostOnly short at the ask — fills at 0.9bps maker fee." });
   };
 
+  // One-click auto-pilot: hedge ALL the MON you hold, then churn automatically. Every
+  // order is signed in-browser with the Perpl key — no wallet pop-ups, no per-trade
+  // confirmation. Runs while this tab is open.
+  const doAutoPilot = () => {
+    if (monBalance <= 0.0001) {
+      setNote({ kind: "err", text: "No MON to hedge — swap some USDC → MON first, then auto-pilot." });
+      return;
+    }
+    const size = monBalance;
+    const h: HedgeLocal = { targetMon: size, openedAt: Date.now(), epochId: null, fillOids: [] };
+    setHedge(h);
+    saveHedge(h);
+    setSizeInput(size.toFixed(2));
+    setWorking("opening");
+    setChurnOn(true); // churn kicks in automatically once the short is filled
+    setNote({
+      kind: "ok",
+      text: `Auto-pilot on — hedging ${size.toFixed(1)} MON then churning. No confirmations; runs while this tab is open.`,
+    });
+  };
+
   const doClose = () => {
     setChurnOn(false);
     setWorking("closing");
@@ -406,9 +427,20 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                       : "connecting…"}
                 </div>
               </div>
-              <button className="btn block" onClick={doOpen} disabled={session.status !== "ready"}>
-                Open hedge — maker short
+              <button className="btn block" onClick={doAutoPilot} disabled={session.status !== "ready"}>
+                ⚡ Auto-pilot — hedge + auto-churn
               </button>
+              <button
+                className="btn secondary block"
+                style={{ marginTop: 8 }}
+                onClick={doOpen}
+                disabled={session.status !== "ready"}
+              >
+                Open hedge only (manual)
+              </button>
+              <div className="fb-hint" style={{ textAlign: "center", marginTop: 8 }}>
+                Orders sign in-browser with your Perpl key — no wallet pop-ups, no per-trade confirm.
+              </div>
             </>
           ) : (
             <>
@@ -461,8 +493,8 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
 
               <div className="churn-row">
                 <div>
-                  <div className="t">Volume churn</div>
-                  <div className="d">Close and re-open 25% every 15 min with maker orders. Tab-open only.</div>
+                  <div className="t">Auto-churn</div>
+                  <div className="d">Auto close/re-open 25% every 15 min — signed in-browser, no confirmations. Tab-open only.</div>
                 </div>
                 <button
                   className={`toggle ${churnOn ? "on" : ""}`}
