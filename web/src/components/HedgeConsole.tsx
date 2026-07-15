@@ -619,6 +619,17 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                   <i />
                 </button>
               </div>
+              {churnOn && (
+                <div className="fb-hint" style={{ marginTop: 8, textAlign: "center" }}>
+                  {session.openOrders.size > 0
+                    ? `🟢 ${session.openOrders.size} maker order${session.openOrders.size > 1 ? "s" : ""} resting on Perpl`
+                    : working !== "idle"
+                      ? "opening the hedge first…"
+                      : strategy === "avellaneda"
+                        ? "placing quotes…"
+                        : "waiting for next churn cycle…"}
+                </div>
+              )}
             </>
           )}
 
