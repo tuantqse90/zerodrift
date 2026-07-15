@@ -1176,6 +1176,47 @@ footer {
 .strat-picker button.active { color: hsl(var(--primary)); border-color: hsl(var(--primary) / 0.55); background: hsl(var(--primary) / 0.1); }
 .strat-blurb { font-size: 11px; color: hsl(var(--muted-foreground)); line-height: 1.45; margin: 0 0 12px; }
 
+/* ── strategy A/B compare ─────────────────────────────────────────────────── */
+.strat-compare { padding: 4px 2px 2px; display: flex; flex-direction: column; gap: 12px; }
+.cmp-verdict { margin: 0; font-size: 13px; line-height: 1.5; color: hsl(var(--foreground) / 0.9); }
+.cmp-grid { display: flex; flex-direction: column; }
+.cmp-head, .cmp-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.cmp-head { padding-bottom: 8px; border-bottom: 1px solid hsl(var(--border) / 0.6); }
+.cmp-col-h { text-align: right; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+.cmp-col-h.churn { color: hsl(var(--primary)); }
+.cmp-col-h.as { color: hsl(var(--mint)); }
+.cmp-row { padding: 9px 0; border-bottom: 1px solid hsl(var(--border) / 0.3); }
+.cmp-row.cmp-state { padding-top: 10px; }
+.cmp-row.cmp-state span:not(.cmp-k) { display: flex; justify-content: flex-end; }
+.cmp-k { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+.cmp-v {
+  text-align: right;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.75);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.cmp-v.win { color: hsl(var(--mint)); }
+.cmp-v.lose { color: hsl(var(--muted-foreground) / 0.75); }
+.cmp-badge { font-size: 9px; color: hsl(var(--mint)); font-style: normal; }
+.cmp-dim { color: hsl(var(--muted-foreground) / 0.7); font-size: 11px; }
+.cmp-foot { margin: 2px 0 0; font-size: 11px; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+.cmp-foot code { font-family: var(--font-mono); font-size: 10.5px; color: hsl(var(--foreground) / 0.8); background: hsl(var(--background) / 0.6); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 560px) {
+  .cmp-head, .cmp-row { grid-template-columns: minmax(90px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .cmp-v { font-size: 13px; }
+}
+
 /* ── guide link in topbar ───────────────────────────────────────────────── */
 .guide-link {
   font-family: var(--font-mono);

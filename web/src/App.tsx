@@ -10,6 +10,7 @@ import { HistorySpark } from "./components/HistorySpark";
 import { Portfolio } from "./components/Portfolio";
 import { PriceChart, candleStats, useCandles } from "./components/PriceChart";
 import { RecentTrades } from "./components/RecentTrades";
+import { StrategyCompare } from "./components/StrategyCompare";
 import type { Trade } from "./lib/perplFeed";
 import { fetchEpochFeed, publicClient, scanRecentOpeners, type EpochRow } from "./lib/chain";
 import {
@@ -82,12 +83,16 @@ export default function App() {
   const [epochsLoading, setEpochsLoading] = useState(true);
   const [session, setSession] = useState<TradingSession | null>(null);
   const [hedgeSpotMon, setHedgeSpotMon] = useState(0);
-  const [tab, setTab] = useState<"portfolio" | "engine" | "epochs" | "estimator">("engine");
+  const [tab, setTab] = useState<"portfolio" | "engine" | "compare" | "epochs" | "estimator">("engine");
   const [stratKey, setStratKey] = useState<StrategyKey>("churn");
   const [feedState, setFeedState] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const feedRef = useRef<PerplFeed | null>(null);
   const blockNumber = useBlockNumber();
-  const engine = useEngineStatus(STRATEGIES[stratKey].src);
+  // Poll BOTH deployed bots so the A/B compare tab is always live; the rest of the UI
+  // follows whichever strategy the picker selects.
+  const churnEngine = useEngineStatus(STRATEGIES.churn.src);
+  const asEngine = useEngineStatus(STRATEGIES.avellaneda.src);
+  const engine = stratKey === "avellaneda" ? asEngine : churnEngine;
   const [res, setRes] = useState(900);
   const candles = useCandles(market, res);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -579,6 +584,9 @@ export default function App() {
           <button role="tab" aria-selected={tab === "engine"} className={tab === "engine" ? "active" : ""} onClick={() => setTab("engine")}>
             ENGINE LOG
           </button>
+          <button role="tab" aria-selected={tab === "compare"} className={tab === "compare" ? "active" : ""} onClick={() => setTab("compare")}>
+            A/B COMPARE
+          </button>
           <button role="tab" aria-selected={tab === "epochs"} className={tab === "epochs" ? "active" : ""} onClick={() => setTab("epochs")}>
             ON-CHAIN EPOCHS {epochs.length > 0 ? `(${epochs.length})` : ""}
           </button>
@@ -594,6 +602,8 @@ export default function App() {
                 ? engine
                   ? `paper session · live mainnet data · ${engine.state}`
                   : "connecting…"
+                : tab === "compare"
+                  ? "two live engines · same $100 hedge"
                 : tab === "estimator"
                   ? "live fees · funding · boost"
                   : latestEpoch
@@ -606,6 +616,8 @@ export default function App() {
             <Portfolio session={session} mark={mid} />
           ) : tab === "engine" ? (
             <EngineTerminal status={engine} />
+          ) : tab === "compare" ? (
+            <StrategyCompare churn={churnEngine} as={asEngine} />
           ) : tab === "estimator" ? (
             <Estimator market={market} fundingApr={fundingApr} />
           ) : (
