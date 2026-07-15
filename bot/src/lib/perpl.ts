@@ -109,7 +109,10 @@ export async function fetchPerplMarket(name: string): Promise<PerplMarketInfo> {
     orderRetryBlocks: m.order_retry_blocks ?? 5,
     initialMarginFrac: m.config.initial_margin ?? 1000,
     maintenanceMarginFrac: m.config.maintenance_margin ?? 2000,
-    pointsBoostBps: m.points_boost_bps ?? 10_000,
+    // points_boost_bps is only non-zero during a boost campaign week (e.g. 20000 = 2x).
+    // 0/absent means NO ACTIVE BOOST — the base 1x mPoints rate — never "earns nothing",
+    // so normalise to 10000 to keep boosted-volume math honest (x0 volume was a lie).
+    pointsBoostBps: m.points_boost_bps || 10_000,
     minPostingAmount: m.config.min_posting_amount ?? "0",
   };
 }

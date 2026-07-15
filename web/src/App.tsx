@@ -520,7 +520,7 @@ export default function App() {
                 <div className="kv">
                   <span className="k">BOOSTED VOL</span>
                   <span className="mono v-mint">
-                    ${(engine.boostedVolumeUsd ?? engine.weekVolumeUsd * 2).toFixed(0)}
+                    ${(engine.boostedVolumeUsd ?? engine.weekVolumeUsd).toFixed(0)}
                   </span>
                 </div>
                 <div className="kv">
