@@ -7,6 +7,9 @@ import { formatEther, keccak256, toHex, type Address, type WalletClient } from "
 import { connectWallet, eagerConnect, monad, publicClient, REGISTRY_ABI, REGISTRY_ADDRESS, watchAccount } from "../lib/chain";
 import type { PerplBook, PerplMarketInfo } from "../lib/perplFeed";
 import { clearKeys, loadKeys, saveKeys, TradingSession, type FillEvent } from "../lib/perplTrading";
+import { AS_DEFAULTS, avellanedaQuote, realizedVol } from "../lib/avellaneda";
+
+type Strategy = "churn" | "avellaneda";
 
 interface HedgeLocal {
   targetMon: number;
@@ -45,6 +48,14 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const [sizeInput, setSizeInput] = useState("");
   const [working, setWorking] = useState<"idle" | "opening" | "closing">("idle");
   const [churnOn, setChurnOn] = useState(false);
+  const [strategy, setStrategy] = useState<Strategy>(() =>
+    localStorage.getItem("zerodrift.strategy") === "avellaneda" ? "avellaneda" : "churn",
+  );
+  const pickStrategy = (s: Strategy) => {
+    session?.cancelAllMine();
+    setStrategy(s);
+    localStorage.setItem("zerodrift.strategy", s);
+  };
   const [note, setNote] = useState<{ kind: "ok" | "err" | ""; text: string }>({ kind: "", text: "" });
   const [hedge, setHedge] = useState<HedgeLocal | null>(loadHedge());
   const [keysVersion, setKeysVersion] = useState(0); // bump to reload keys for the active wallet
@@ -54,6 +65,11 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
   const churnPhase = useRef<"idle" | "closing" | "reopening">("idle");
   const churnSize = useRef(0);
   const lastChurnAt = useRef(Date.now());
+  // Always-current book so the timer loops don't get reset on every WS tick (book
+  // changes identity constantly — keeping it out of effect deps lets intervals fire).
+  const bookRef = useRef(book);
+  bookRef.current = book;
+  const midBuf = useRef<number[]>([]); // rolling mids for the AS vol estimate
 
   useEffect(() => {
     if (!address) return;
@@ -128,11 +144,12 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
 
   // maker keep-alive: keep one PostOnly order working while opening/closing
   useEffect(() => {
-    if (working === "idle" || !session || !book || !market) return;
+    if (working === "idle" || !session || !market) return;
     const target = hedge?.targetMon ?? 0;
     const t = setInterval(() => {
       if (!session.ready) return;
-      const b = book;
+      const b = bookRef.current;
+      if (!b) return;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
 
@@ -153,14 +170,14 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       }
     }, 4000);
     return () => clearInterval(t);
-  }, [working, session, book, market, hedge]);
+  }, [working, session, market, hedge]);
 
-  // churn loop (tab-open only)
+  // churn loop (tab-open only) — discrete close/re-open round-trips
   useEffect(() => {
-    if (!churnOn || !session || !market) return;
+    if (strategy !== "churn" || !churnOn || !session || !market) return;
     const t = setInterval(() => {
       if (!session.ready || working !== "idle") return;
-      const b = book;
+      const b = bookRef.current;
       if (!b) return;
       const pos = session.position;
       const shortMon = pos.side === "short" ? pos.sizeMon : 0;
@@ -190,7 +207,68 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       }
     }, 5000);
     return () => clearInterval(t);
-  }, [churnOn, session, market, book, working, hedge]);
+  }, [strategy, churnOn, session, market, working, hedge]);
+
+  // Avellaneda loop (tab-open only) — maintain a resting bid (buy-back) and ask
+  // (add-short) around the AS reservation price; re-quote a side on price drift, pull
+  // it when the short strays past the inventory band. Every order is a PostOnly maker.
+  useEffect(() => {
+    if (strategy !== "avellaneda" || !churnOn || !session || !market) return;
+    const mkt = market;
+    const t = setInterval(() => {
+      if (!session.ready || working !== "idle") return;
+      const b = bookRef.current;
+      if (!b) return;
+      const mid = (b.bids[0].px + b.asks[0].px) / 2;
+      const buf = midBuf.current;
+      buf.push(mid);
+      if (buf.length > 40) buf.shift();
+
+      const short = session.position.side === "short" ? session.position.sizeMon : 0;
+      const target = hedge?.targetMon ?? 0;
+      if (short <= 0 || target <= 0) return;
+
+      const q = avellanedaQuote({
+        mid,
+        volFrac: realizedVol(buf),
+        inventoryDev: short - target,
+        invScale: target,
+        gamma: AS_DEFAULTS.gamma,
+        kappa: AS_DEFAULTS.kappa,
+        feeFrac: mkt.makerFeeMicros / 1e6,
+        minHalfBps: AS_DEFAULTS.minHalfBps,
+        maxHalfBps: AS_DEFAULTS.maxHalfBps,
+        maxSkewBps: AS_DEFAULTS.maxSkewBps,
+      });
+      const tick = 1 / 10 ** mkt.priceDecimals;
+      const clip = target * AS_DEFAULTS.clipFrac;
+      const overShort = short > target * (1 + AS_DEFAULTS.invBandFrac);
+      const underShort = short < target * (1 - AS_DEFAULTS.invBandFrac);
+      const bidPx = Math.min(q.bidPx, b.asks[0].px - tick); // rests on the bid, never crosses
+      const askPx = Math.max(q.askPx, b.bids[0].px + tick); // rests on the ask, never crosses
+
+      const orders = [...session.openOrders.values()];
+      const restingBid = orders.find((o) => o.type === 4); // short-close (buy-back)
+      const restingAsk = orders.find((o) => o.type === 2); // short-open (add-short)
+      const drifted = (rp: number, tp: number) => (Math.abs(tp - rp) / rp) * 1e4 > AS_DEFAULTS.repriceBps;
+
+      // Buy-back leg: pull while under target, else keep resting / re-quote on drift.
+      if (underShort || clip <= 0) {
+        if (restingBid) session.cancel(restingBid.oid);
+      } else if (!restingBid) session.placeMaker("short-close", bidPx, clip);
+      else if (drifted(restingBid.px, bidPx)) session.cancel(restingBid.oid); // re-placed next tick
+
+      // Add-short leg: pull while over target.
+      if (overShort || clip <= 0) {
+        if (restingAsk) session.cancel(restingAsk.oid);
+      } else if (!restingAsk) session.placeMaker("short-open", askPx, clip);
+      else if (drifted(restingAsk.px, askPx)) session.cancel(restingAsk.oid);
+    }, 4000);
+    return () => {
+      session.cancelAllMine();
+      clearInterval(t);
+    };
+  }, [strategy, churnOn, session, market, working, hedge]);
 
   const doConnect = async () => {
     const c = await connectWallet();
@@ -261,7 +339,9 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     setChurnOn(true); // churn kicks in automatically once the short is filled
     setNote({
       kind: "ok",
-      text: `Auto-pilot on — hedging ${size.toFixed(1)} MON then churning. No confirmations; runs while this tab is open.`,
+      text: `Auto-pilot on — hedging ${size.toFixed(1)} MON then ${
+        strategy === "avellaneda" ? "quoting both sides (Avellaneda)" : "churning"
+      }. No confirmations; runs while this tab is open.`,
     });
   };
 
@@ -427,8 +507,25 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                       : "connecting…"}
                 </div>
               </div>
+              <div className="fb-label" style={{ marginBottom: 6 }}>FARMING STRATEGY</div>
+              <div className="strat-picker" style={{ marginBottom: 4 }}>
+                <button className={strategy === "churn" ? "active" : ""} onClick={() => pickStrategy("churn")}>
+                  Churn
+                </button>
+                <button
+                  className={strategy === "avellaneda" ? "active" : ""}
+                  onClick={() => pickStrategy("avellaneda")}
+                >
+                  Avellaneda
+                </button>
+              </div>
+              <div className="fb-hint" style={{ marginBottom: 10 }}>
+                {strategy === "avellaneda"
+                  ? "Two-sided market making — quotes both sides, captures the spread, self-balances."
+                  : "Discrete close/re-open round-trips — simple, robust volume."}
+              </div>
               <button className="btn block" onClick={doAutoPilot} disabled={session.status !== "ready"}>
-                ⚡ Auto-pilot — hedge + auto-churn
+                ⚡ Auto-pilot — hedge + {strategy === "avellaneda" ? "quote" : "churn"}
               </button>
               <button
                 className="btn secondary block"
@@ -491,16 +588,32 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
                 )}
               </div>
 
+              <div className="strat-picker" style={{ marginTop: 14 }}>
+                <button className={strategy === "churn" ? "active" : ""} onClick={() => pickStrategy("churn")}>
+                  Churn
+                </button>
+                <button
+                  className={strategy === "avellaneda" ? "active" : ""}
+                  onClick={() => pickStrategy("avellaneda")}
+                >
+                  Avellaneda
+                </button>
+              </div>
               <div className="churn-row">
                 <div>
-                  <div className="t">Auto-churn</div>
-                  <div className="d">Auto close/re-open 25% every 15 min — signed in-browser, no confirmations. Tab-open only.</div>
+                  <div className="t">Auto-farm · {strategy === "avellaneda" ? "Avellaneda" : "Churn"}</div>
+                  <div className="d">
+                    {strategy === "avellaneda"
+                      ? "Two-sided maker quotes around the spread, self-balancing."
+                      : "Close/re-open 25% every 15 min."}{" "}
+                    Signed in-browser, no confirmations. Tab-open only.
+                  </div>
                 </div>
                 <button
                   className={`toggle ${churnOn ? "on" : ""}`}
                   role="switch"
                   aria-checked={churnOn}
-                  aria-label="Toggle volume churn"
+                  aria-label="Toggle auto-farm"
                   onClick={() => setChurnOn(!churnOn)}
                 >
                   <i />
