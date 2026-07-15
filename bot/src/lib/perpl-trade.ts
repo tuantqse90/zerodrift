@@ -540,10 +540,13 @@ export class LivePerplExecutor implements PerplExecutor {
         break;
       }
       case 100: {
-        // Heartbeat: sn must be prev+1; h = head block.
+        // Heartbeat: h = head block. Only a FORWARD sn gap means messages were
+        // lost — duplicate/reordered heartbeats (sn <= lastSn, observed live on the
+        // web session) are harmless and must not force a reconnect.
         if (typeof msg.h === "number") this.head = msg.h;
         if (typeof msg.sn === "number") {
-          if (this.lastSn !== undefined && msg.sn !== this.lastSn + 1) {
+          if (this.lastSn !== undefined && msg.sn <= this.lastSn) break;
+          if (this.lastSn !== undefined && msg.sn > this.lastSn + 1) {
             this.ws?.close(); // gap → messages lost → resnapshot
             return;
           }

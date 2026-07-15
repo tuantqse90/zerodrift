@@ -458,7 +458,11 @@ export class TradingSession {
       case 100:
         if (typeof msg.h === "number") this.headBlock = msg.h;
         if (typeof msg.sn === "number") {
-          if (this.lastSn !== undefined && msg.sn !== this.lastSn + 1) {
+          // Only a FORWARD gap means we missed a message. Duplicate/reordered
+          // heartbeats (sn <= lastSn — observed live: 87979895 → 87979895) are
+          // harmless and must NOT force a reconnect.
+          if (this.lastSn !== undefined && msg.sn <= this.lastSn) break;
+          if (this.lastSn !== undefined && msg.sn > this.lastSn + 1) {
             this.log(`heartbeat sn gap (${this.lastSn} → ${msg.sn}) — reconnecting for a fresh snapshot`);
             this.ws?.close();
             return;
