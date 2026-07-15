@@ -288,11 +288,15 @@ export default function App() {
             className={`sdot ${feedState === "live" ? "on" : feedState === "reconnecting" ? "reconn" : ""}`}
             title={`Perpl feed: ${feedState}`}
           >
-            <i />
+            <svg viewBox="0 0 32 32" className="brand-svg" aria-hidden="true">
+              <path d="M9.71373 0H4V31H9.71373V0Z" fill="currentColor" />
+              <path d="M21.5062 15.4392H15.7925V31H21.5062V15.4392Z" fill="currentColor" />
+              <path d="M27.2196 0H21.5059V15.4392H27.2196V0Z" fill="currentColor" />
+            </svg>
             {feedState === "reconnecting" ? "RECONNECTING" : "Perpl"}
           </span>
           <span className={`sdot ${blockNumber ? "on" : ""}`} title="Monad chain">
-            <i />
+            <img src="/mon.svg" className="brand-img" alt="" aria-hidden="true" />
             Monad
           </span>
           <span className={`sdot ${engine ? "on" : ""}`} title="Hedging engine">

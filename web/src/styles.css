@@ -1433,6 +1433,12 @@ footer {
 .nav-status { display: flex; align-items: center; gap: 15px; }
 .sdot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
 .sdot i { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--muted-foreground) / 0.45); flex-shrink: 0; }
+/* brand marks double as the status light: full when connected, dim when not */
+.sdot .brand-svg { width: 13px; height: 13px; flex-shrink: 0; color: hsl(var(--muted-foreground) / 0.55); transition: color 0.3s; }
+.sdot .brand-img { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.4; filter: grayscale(1); transition: opacity 0.3s, filter 0.3s; }
+.sdot.on .brand-svg { color: hsl(var(--mint)); filter: drop-shadow(0 0 5px hsl(var(--mint) / 0.5)); }
+.sdot.on .brand-img { opacity: 1; filter: none; }
+.sdot.reconn .brand-svg { color: hsl(var(--warning)); }
 .sdot.on { color: hsl(var(--foreground) / 0.85); }
 .sdot.on i { background: hsl(var(--mint)); box-shadow: 0 0 7px hsl(var(--mint) / 0.6); }
 .sdot.reconn { color: hsl(var(--warning)); }
