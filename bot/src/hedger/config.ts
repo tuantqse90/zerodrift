@@ -32,6 +32,8 @@ export interface HedgerConfig {
   trendResumePct: number;
   /** Probability a soft-band delta correction is trued up on the SPOT leg instead of the perp. */
   spotRebalanceProb: number;
+  /** false = owner holds the spot leg; the bot never buys/sells spot MON. */
+  spotManaged: boolean;
   // ── Avellaneda-Stoikov strategy knobs ─────────────────────────────────────
   asGamma: number;
   asKappa: number;
@@ -63,11 +65,17 @@ export interface HedgerConfig {
   dataDir: string;
 }
 
+// false ⇒ the owner already holds the spot MON in their own wallet: the bot NEVER
+// buys/sells spot (no wallet key needed on the box) and only manages the perp short.
+const SPOT_MANAGED = envBool("HEDGER_SPOT_MANAGED", true);
+
 const LIVE =
   envBool("HEDGER_LIVE", false) &&
-  !!process.env.HEDGER_PRIVATE_KEY &&
   !!process.env.PERPL_API_KEY &&
-  !!process.env.PERPL_ED25519_PRIVKEY;
+  !!process.env.PERPL_ED25519_PRIVKEY &&
+  // The wallet key is only needed when the bot itself trades the spot leg (and,
+  // optionally, for on-chain epoch receipts — registry no-ops without it).
+  (!!process.env.HEDGER_PRIVATE_KEY || !SPOT_MANAGED);
 
 function parseStrategy(): HedgerStrategy {
   return envStr("HEDGER_STRATEGY", "churn").toLowerCase() === "avellaneda" ? "avellaneda" : "churn";
@@ -89,6 +97,7 @@ export const HEDGER_CONFIG: HedgerConfig = {
   trendPausePct: envNum("HEDGER_TREND_PAUSE_PCT", 1.0),
   trendResumePct: envNum("HEDGER_TREND_RESUME_PCT", 0.4),
   spotRebalanceProb: envNum("HEDGER_SPOT_REBALANCE_PROB", 0.35),
+  spotManaged: SPOT_MANAGED,
   asGamma: envNum("HEDGER_AS_GAMMA", 120),
   asKappa: envNum("HEDGER_AS_KAPPA", 1500),
   asMinHalfBps: envNum("HEDGER_AS_MIN_HALF_BPS", 2),

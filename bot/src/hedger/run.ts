@@ -125,6 +125,12 @@ async function main(): Promise<void> {
     `🟢 ZeroDrift hedger online (${MODE}) · ${market.name} $${CFG.notionalUsd} target · churn ${CFG.churnIntervalMs / 60000}m`,
   );
 
+  // A durably-CLOSED hedge is terminal: exit before signing in / alerting, so a
+  // container restart policy can't turn a finished unwind into a boot/exit loop.
+  if (state.state === "CLOSED" && !CFG.unwind) {
+    console.log("state CLOSED — nothing to do, exiting");
+    process.exit(0);
+  }
   if (CFG.unwind && state.state !== "CLOSED") transition(state, "UNWINDING", "HEDGER_UNWIND=true at boot");
 
   // Paper mode holds the perp position in memory only, so a restart lands with a
@@ -196,6 +202,17 @@ async function main(): Promise<void> {
         case "INIT": {
           const px = (await spotPriceUsd()) ?? mid;
           state.targetSizeMon = CFG.notionalUsd / px;
+          if (!CFG.spotManaged) {
+            // The owner already holds the spot leg in their own wallet — never buy
+            // (or later sell) it. Record a synthetic fill at the reference price and
+            // go straight to hedging the short against it.
+            state.spotMon = state.targetSizeMon;
+            state.spotCostUsd = CFG.notionalUsd;
+            state.spotTxHash = "owner-held";
+            pnl.event("spot-held", { mon: state.spotMon, usd: CFG.notionalUsd, px, mode: MODE });
+            transition(state, "SPOT_FILLED", `owner-held spot leg: ${state.spotMon.toFixed(4)} MON @ $${px.toFixed(5)}`);
+            break;
+          }
           const fill = await buySpotMon(CFG.notionalUsd);
           if (!fill) {
             console.log("spot buy: no route — retrying next tick");
@@ -327,7 +344,9 @@ async function main(): Promise<void> {
             const inBand =
               spotAfter > state.targetSizeMon * 0.85 && spotAfter < state.targetSizeMon * 1.15;
             rebalanceRoute =
-              deltaPct <= CFG.deltaHardPct && inBand && Math.random() < CFG.spotRebalanceProb ? "spot" : "perp";
+              CFG.spotManaged && deltaPct <= CFG.deltaHardPct && inBand && Math.random() < CFG.spotRebalanceProb
+                ? "spot"
+                : "perp";
           }
 
           if (rebalanceRoute === "spot") {
@@ -401,15 +420,31 @@ async function main(): Promise<void> {
           if (shortMon > 0) {
             if (!unwindWorker) unwindWorker = new MakerWorker("short-close", shortMon, exec);
             await unwindWorker.tick(book);
-            // Maker didn't fill in time → pay taker to be flat.
+            // Maker didn't fill in time → pay taker to be flat. ONE taker per
+            // window: reset the clock after firing, or the position-update lag
+            // would re-fire a full-size IOC every tick.
             if (Date.now() - unwindStartedAt > 10 * 60_000 && !unwindWorker.done) {
               await unwindWorker.cancel();
               unwindWorker = null;
               await exec.placeTaker("short-close", shortMon, CFG.takerSlippageBps);
+              takerSpentToday += shortMon * mid;
+              unwindStartedAt = Date.now();
             }
             break;
           }
 
+          if (state.spotMon > 0 && !unwindSpotDone && !CFG.spotManaged) {
+            // Owner-held spot: the short is closed, the MON stays untouched in the
+            // owner's wallet. Close the epoch and exit.
+            unwindSpotDone = true;
+            await closeEpochOnChain(state.epochId, state.spotCostUsd, "owner-held", `perp-${fillLog.length}`);
+            await sendTelegram(
+              `📕 ZeroDrift unwound (short closed; owner-held spot untouched) · fees $${(pnl.makerFeesUsd + pnl.takerFeesUsd).toFixed(2)} · funding $${pnl.fundingUsd.toFixed(2)} · volume $${pnl.perpVolumeUsd.toFixed(0)}`,
+            );
+            state.spotMon = 0;
+            transition(state, "CLOSED", "short closed — owner-held spot left in the wallet");
+            break;
+          }
           if (state.spotMon > 0 && !unwindSpotDone) {
             const fill = await sellSpotMon(state.spotMon);
             if (fill) {

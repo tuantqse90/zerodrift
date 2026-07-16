@@ -4,6 +4,33 @@ The engine already runs BY ITSELF, 24/7, as docker container `zd-hedger` on the 
 currently in **paper mode** (simulated fills on live mainnet data; feeds the site's
 terminal). To make it trade REAL funds autonomously, the owner does this once:
 
+## ⚡ Fast path — you already hold the spot MON (recommended)
+
+If your wallet already holds the MON (spot leg), the bot only needs to run the perp
+short — **no wallet key ever touches the VPS** (Perpl API keys cannot withdraw funds).
+One command, prompts for the Perpl keys silently, launches `zd-live` next to the two
+paper demo bots:
+
+```bash
+ssh root@<VPS>
+bash /opt/zerodrift/deploy/golive-live.sh 100 avellaneda   # $100 notional, AS strategy
+```
+
+Prereqs: (1) ≥$100 of MON held in your wallet, (2) Perpl account funded with AUSD
+(≥ the notional recommended → 1:1 buffer survives a ~2× pump at 2× leverage),
+(3) a Perpl API key (app.perpl.xyz/apikeys or `bun run hedger:enroll`), (4) the
+browser auto-farm for this account turned OFF (two quoters would fight).
+
+Watch: `docker logs -f zd-live` → `mode=LIVE` → `session ready` → maker fills →
+`HEDGED` → quoting. Status feed: `/status-live.json`. Kill any time: `docker stop
+zd-live` (the Perpl position stays; close it in the app or restart with
+`HEDGER_UNWIND=true` to exit cleanly).
+
+---
+
+The sections below are the FULL flow where the bot also buys/sells the spot leg
+itself (needs a funded wallet key on the box).
+
 ## 0. What the bot does when live
 
 Hold spot MON + short MON-perp on Perpl at equal size. Every 15 min it churns 25% of the

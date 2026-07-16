@@ -469,7 +469,10 @@ export class LivePerplExecutor implements PerplExecutor {
   private handle(msg: any): void {
     switch (msg.mt) {
       case 19: {
-        // WalletSnapshot — authoritative reset point.
+        // WalletSnapshot — authoritative reset point. NOTE: readiness flips only on
+        // the PositionsSnapshot (mt:26) that follows — going ready here would open a
+        // window where isReady()=true but a pre-existing short still reads flat, and
+        // the engine would size a hedge against a phantom-flat position.
         this.lastSn = typeof msg.sn === "number" ? msg.sn : undefined;
         const accounts: any[] = msg.as ?? [];
         const acc =
@@ -478,9 +481,14 @@ export class LivePerplExecutor implements PerplExecutor {
           if (this.accountId === 0) this.accountId = acc.id;
           this.nextRq = Math.max(this.nextRq, Number(acc.lfr) || 0);
           this.balance = { balanceUsd: parseAmount(acc.b), lockedUsd: parseAmount(acc.lb) };
+        } else if (this.accountId !== 0) {
+          // A mistyped PERPL_ACCOUNT_ID must fail LOUDLY at boot, not trade on some
+          // other account. Stay not-ready forever; the operator sees this in logs.
+          console.error(
+            `[perpl] PERPL_ACCOUNT_ID ${this.accountId} not in wallet snapshot (accounts: ${accounts.map((a) => a.id).join(",") || "none"}) — refusing to trade`,
+          );
         }
         this.retry = 0;
-        this.ready = true;
         break;
       }
       case 23: {
@@ -505,8 +513,12 @@ export class LivePerplExecutor implements PerplExecutor {
         break;
       }
       case 26: {
-        // PositionsSnapshot
+        // PositionsSnapshot — the LAST snapshot in the burst (19→23→26): only now is
+        // the view of the account complete (incl. any pre-existing short), so only
+        // now does the executor go ready. A mismatched PERPL_ACCOUNT_ID never sets
+        // balance in mt:19 — keep it not-ready in that case too.
         this.applyPositions(msg.d ?? []);
+        if (this.balance !== null) this.ready = true;
         break;
       }
       case 21: {

@@ -13,8 +13,13 @@ const REGISTRY_ABI = parseAbi([
   "function epochCount(address owner) view returns (uint256)",
 ]);
 
-function toBytes32(hex: string): `0x${string}` {
-  const clean = (hex.startsWith("0x") ? hex.slice(2) : hex).slice(0, 64);
+function toBytes32(ref: string): `0x${string}` {
+  // Real tx hashes pass through; synthetic refs ("owner-held", "perp-7") are
+  // UTF-8-encoded — padding raw text produced invalid hex and made every
+  // openEpoch/closeEpoch revert before reaching the chain.
+  let clean = ref.startsWith("0x") ? ref.slice(2) : ref;
+  if (!/^[0-9a-fA-F]*$/.test(clean)) clean = Buffer.from(ref, "utf8").toString("hex");
+  clean = clean.slice(0, 64);
   return `0x${clean.padStart(64, "0")}` as `0x${string}`;
 }
 
