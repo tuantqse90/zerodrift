@@ -16,6 +16,16 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://hedge.nullterminal.xyz/og.png" />
     <meta name="theme-color" content="#0b0c0f" />
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-79YZSLRCRZ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-79YZSLRCRZ');
+    </script>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -32,5 +42,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Cloudflare Web Analytics -->
+    <script
+      type="module"
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "7db04e77f4dc4361b3fc631e95ba5e51"}'
+    ></script>
+    <!-- End Cloudflare Web Analytics -->
   </body>
 </html>
