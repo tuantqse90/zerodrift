@@ -8,6 +8,7 @@ import { connectWallet, eagerConnect, monad, publicClient, REGISTRY_ABI, REGISTR
 import type { PerplBook, PerplMarketInfo } from "../lib/perplFeed";
 import { clearKeys, loadKeys, saveKeys, TradingSession, type FillEvent } from "../lib/perplTrading";
 import { asClipSize, AS_DEFAULTS, avellanedaQuote, realizedVol } from "../lib/avellaneda";
+import { CloudRunner } from "./CloudRunner";
 
 type Strategy = "churn" | "avellaneda";
 
@@ -722,6 +723,8 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
               )}
             </>
           )}
+
+          {address && <CloudRunner address={address} wallet={wallet} session={session} strategy={strategy} />}
 
           <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
             <button className="btn secondary sm" onClick={doClearKeys}>

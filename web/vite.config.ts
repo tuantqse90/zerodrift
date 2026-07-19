@@ -17,6 +17,6 @@ const perplProxy: ProxyOptions = {
 
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { "/perpl": perplProxy } },
-  preview: { proxy: { "/perpl": perplProxy } },
+  server: { proxy: { "/perpl": perplProxy, "/api": "http://localhost:8796" } },
+  preview: { proxy: { "/perpl": perplProxy, "/api": "http://localhost:8796" } },
 });

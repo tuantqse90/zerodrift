@@ -14,6 +14,11 @@ hedge.nullterminal.xyz {
 		}
 	}
 
+	# zd-cloud — per-user 24/7 bot instances (start/stop/status API, wallet-signed)
+	handle /api/cloud/* {
+		reverse_proxy localhost:8796
+	}
+
 	# Each deployed bot writes its own status feed under /opt/zerodrift/status/
 	# (status.json = churn, status-avellaneda.json = AS). The web strategy picker
 	# fetches whichever the user selects. The glob serves them all + is cache-busted.
