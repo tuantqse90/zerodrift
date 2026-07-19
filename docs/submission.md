@@ -32,6 +32,13 @@ headless engine, with the hedge recorded **on-chain** in a permissionless regist
    **can never withdraw** (protocol guarantee). Orders need no wallet pop-up.
 5. **On-chain, no token, no custody.** Each hedge writes an `EpochOpened`/`EpochClosed`
    receipt to the HedgeRegistry (UUPS-free, immutable, permissionless).
+6. **Farm-as-a-service.** Any user can run their own 24/7 instance on our server with
+   **one wallet signature** — per-user containers, AES-encrypted keys that still can't
+   withdraw, personal live status feed, signed stop/unwind. Live now:
+   `curl https://hedge.nullterminal.xyz/api/cloud/health`.
+7. **Proven with real money.** The full flow ran with real funds on mainnet, on camera:
+   2,818 MON spot vs 2,818 MON short (drift 0.00%), Avellaneda quoting 42-MON clips
+   ±6.5bps, and a live maker fill reducing the position mid-recording.
 
 ## Architecture (one glance)
 
@@ -102,6 +109,9 @@ back to the **Hedge** card: "keys active", "no wallet pop-ups".
   hedge epoch — an auditable, permissionless receipt.
 
 ## Status at submission
-Web + both paper engines live 24/7 on a self-hosted VPS. Live trading is a one-click,
-owner-gated step (fund a wallet + Perpl key); the code path is built and gated behind
-keys. See `docs/golive.md`.
+Web + both paper engines live 24/7 on a self-hosted VPS, plus the **zd-cloud
+farm-as-a-service API** (per-user 24/7 instances, wallet-signature-gated — see
+`docs/cloud.md`). The live-trading path is **not hypothetical**: it ran with real funds
+on Perpl mainnet (hedge opened, Avellaneda quoting, real maker fills) and is a
+one-command runbook for anyone else (`docs/golive.md`). Tests: 9/9 Foundry + 71 Bun,
+plus a production e2e of the cloud API with a burner wallet.
