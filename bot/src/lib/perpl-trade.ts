@@ -138,6 +138,14 @@ export function parseAmount(a: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** AUSD collateral has 6 decimals; balance/locked/fee fields arrive as RAW integer
+ * units (observed live 2026-07-19: fee "6751" = $0.006751 on a $9.78 fill — the
+ * unscaled value poisoned the PnL ledger). Same scaling the web console uses. */
+const COLLATERAL_DECIMALS = 6;
+export function parseCollateral(a: unknown): number {
+  return parseAmount(a) / 10 ** COLLATERAL_DECIMALS;
+}
+
 // ── Live executor ─────────────────────────────────────────────────────────────
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000, 32000, 60000];
@@ -480,7 +488,7 @@ export class LivePerplExecutor implements PerplExecutor {
         if (acc) {
           if (this.accountId === 0) this.accountId = acc.id;
           this.nextRq = Math.max(this.nextRq, Number(acc.lfr) || 0);
-          this.balance = { balanceUsd: parseAmount(acc.b), lockedUsd: parseAmount(acc.lb) };
+          this.balance = { balanceUsd: parseCollateral(acc.b), lockedUsd: parseCollateral(acc.lb) };
         } else if (this.accountId !== 0) {
           // A mistyped PERPL_ACCOUNT_ID must fail LOUDLY at boot, not trade on some
           // other account. Stay not-ready forever; the operator sees this in logs.
@@ -526,14 +534,14 @@ export class LivePerplExecutor implements PerplExecutor {
         if (msg.id === this.accountId || this.accountId === 0) {
           if (this.accountId === 0 && typeof msg.id === "number") this.accountId = msg.id;
           this.nextRq = Math.max(this.nextRq, Number(msg.lfr) || 0);
-          this.balance = { balanceUsd: parseAmount(msg.b), lockedUsd: parseAmount(msg.lb) };
+          this.balance = { balanceUsd: parseCollateral(msg.b), lockedUsd: parseCollateral(msg.lb) };
           // Realized funding settlements (AccountEventType 8) → funding-sign verification.
           for (const e of msg.h ?? []) {
             if (e?.et !== 8) continue;
             const key = `${e.at?.b ?? 0}-${e.at?.tx ?? 0}-${e.at?.l ?? 0}`;
             if (this.seenFundingKeys.has(key)) continue;
             this.seenFundingKeys.add(key);
-            const credit = parseAmount(e.a);
+            const credit = parseCollateral(e.a);
             for (const cb of this.fundingCbs) cb(credit);
           }
         }
@@ -630,7 +638,7 @@ export class LivePerplExecutor implements PerplExecutor {
       oid: f.oid,
       px,
       sz,
-      feeUsd: parseAmount(f.f),
+      feeUsd: parseCollateral(f.f),
       maker: f.l === 1,
       side: intent?.side,
       tsMs: f.at?.t ?? Date.now(),
