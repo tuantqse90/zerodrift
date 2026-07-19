@@ -82,3 +82,22 @@ describe("docker spawn args", () => {
     expect(joined).toContain("--memory");
   });
 });
+
+describe("resetTerminalState", () => {
+  const { mkdtempSync, writeFileSync, existsSync } = require("node:fs");
+  const { tmpdir } = require("node:os");
+  const { join } = require("node:path");
+  const { resetTerminalState } = require("../../src/cloud/server");
+
+  test("wipes a durably-CLOSED state, preserves any live state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "zdc-"));
+    const f = join(dir, "perpl-hedger-state.json");
+    writeFileSync(f, JSON.stringify({ state: "CLOSED" }));
+    expect(resetTerminalState(dir)).toBe(true);
+    expect(existsSync(f)).toBe(false);
+    writeFileSync(f, JSON.stringify({ state: "HEDGED", spotMon: 2321 }));
+    expect(resetTerminalState(dir)).toBe(false);
+    expect(existsSync(f)).toBe(true);
+    expect(resetTerminalState(mkdtempSync(join(tmpdir(), "zdc-empty-")))).toBe(false);
+  });
+});

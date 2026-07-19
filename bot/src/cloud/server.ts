@@ -10,9 +10,27 @@ import { join } from "node:path";
 import { verifyMessage } from "viem";
 import { decryptJson, encryptJson, newSecretHex } from "./crypto";
 import {
-  containerName, countRunningUserBots, inspectInstance, startInstance, statusFileName,
-  stopInstance, type InstanceConfig, type UserKeys,
+  containerName, countRunningUserBots, inspectInstance, shortId, startInstance,
+  statusFileName, stopInstance, ZD_ROOT, type InstanceConfig, type UserKeys,
 } from "./spawn";
+
+/** A durably-CLOSED hedge makes the bot exit at boot (run.ts) — correct for
+ * restart-policy loops, wrong for an explicit signed re-start. Reset it so a
+ * fresh start opens a fresh hedge; any other state is preserved (a config
+ * change on a running instance must resume, not re-enter). */
+export function resetTerminalState(dataDir: string): boolean {
+  const stateFile = join(dataDir, "perpl-hedger-state.json");
+  try {
+    const st = JSON.parse(readFileSync(stateFile, "utf8")) as { state?: string };
+    if (st?.state === "CLOSED") {
+      rmSync(stateFile, { force: true });
+      return true;
+    }
+  } catch {
+    /* no state file yet — nothing to reset */
+  }
+  return false;
+}
 
 const PORT = Number(process.env.CLOUD_PORT || 8796);
 const CLOUD_DIR = process.env.CLOUD_DIR || "/opt/zerodrift/cloud";
@@ -162,6 +180,8 @@ function main(): void {
         };
         const keys: UserKeys = { apiKey: body.apiKey, edPrivHex: body.edPrivHex };
         saveInstance({ config, encKeys: encryptJson(keys, SECRET) });
+        if (resetTerminalState(join(ZD_ROOT, "cloud", "data", shortId(address))))
+          console.log(`[cloud] reset durably-CLOSED state for ${containerName(address)} before start`);
         await startInstance(config, keys);
         console.log(`[cloud] start ${containerName(address)} live=${config.live} strat=${config.strategy} $${config.notionalUsd}`);
         const state = await inspectInstance(address);
