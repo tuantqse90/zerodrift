@@ -315,6 +315,14 @@ async function main(): Promise<void> {
 
         case "CHURNING": {
           const doneRt = await churner.tick(book, exec);
+          if (churner.consumeTimeout()) {
+            transition(
+              state,
+              "HEDGED",
+              `churn leg timeout after ${Math.round(CFG.churnLegTimeoutMs / 60_000)}min — delta guard restores the hedge`,
+            );
+            break;
+          }
           // Raw delta includes the churn's own intentional gap — judge only the excess.
           const adjDeltaPct =
             state.targetSizeMon > 0

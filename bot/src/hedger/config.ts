@@ -56,6 +56,10 @@ export interface HedgerConfig {
   takerSlippageBps: number;
   /** Cancel+re-place a maker order at the new best price after this long unfilled. */
   repriceMs: number;
+  /** Abort a churn cycle whose current leg hasn't completed after this long — the
+   * delta guard then restores the hedge (observed live 2026-07-19: a re-open leg
+   * chased a falling ask for 7h, holding half the position unhedged). */
+  churnLegTimeoutMs: number;
   registryAddress: string;
   unwind: boolean;
   live: boolean;
@@ -116,6 +120,7 @@ export const HEDGER_CONFIG: HedgerConfig = {
   maxDailyTakerUsd: envNum("HEDGER_MAX_DAILY_TAKER_USD", 25),
   takerSlippageBps: envNum("HEDGER_TAKER_SLIPPAGE_BPS", 50),
   repriceMs: envNum("HEDGER_REPRICE_MS", 60_000),
+  churnLegTimeoutMs: envNum("HEDGER_CHURN_LEG_TIMEOUT_MS", 10 * 60_000),
   registryAddress: envStr("HEDGER_REGISTRY_ADDRESS", ""),
   unwind: envBool("HEDGER_UNWIND", false),
   live: LIVE,
