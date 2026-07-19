@@ -7,7 +7,7 @@ one to stop.
 ## User flow (all in the browser)
 
 1. Connect wallet + paste Perpl trade keys in the Hedge console (as usual).
-2. In **Cloud runner · 24/7**: pick notional ($10–$200), tick *real orders (LIVE)*
+2. In **Cloud runner · 24/7**: pick notional ($10–$500), tick *real orders (LIVE)*
    or leave paper, hit **Run on server** → sign one `personal_sign` message.
 3. Done — close the tab. The instance card shows 🟢 running + a personal status
    feed (`/status-u-<id>.json`). **Stop** or **Stop + unwind** anytime (signed).
@@ -25,7 +25,7 @@ one to stop.
 - **Blast radius**: Perpl API keys **cannot withdraw funds** (protocol guarantee).
   Spot stays in the user's wallet — the server only ever runs the perp side
   (`HEDGER_SPOT_MANAGED=false`, never a wallet key).
-- **Caps**: max 8 instances, $10–$200 notional, per-container `--cpus 0.5
+- **Caps**: max 8 instances, $10–$500 notional, per-container `--cpus 0.5
   --memory 384m`, per-IP rate limiting.
 
 ## Ops
