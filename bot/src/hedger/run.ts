@@ -33,6 +33,12 @@ const MODE = CFG.live ? "LIVE" : "PAPER";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
+  // The hedge FSM below measures everything against a spot leg; running it with an
+  // MM intent silently re-purposes those guards. Wrong entrypoint = refuse to start.
+  if (CFG.mode === "mm") {
+    console.error("HEDGER_MODE=mm uses the standalone MM entrypoint: bun run mm (src/hedger/run-mm.ts)");
+    process.exit(1);
+  }
   console.log(
     `zerodrift hedger starting · strategy=${CFG.strategy} market=${CFG.market} notional=$${CFG.notionalUsd} ` +
       `lv=${CFG.leverage / 100}x churn=${CFG.churnIntervalMs / 60000}m×${CFG.churnFraction} ` +

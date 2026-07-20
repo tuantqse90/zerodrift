@@ -21,6 +21,9 @@ const inst = JSON.parse(readFileSync(join(CLOUD_DIR, "instances", `${address}.js
   config: InstanceConfig;
   encKeys: string;
 };
+// Pre-mm records lack these; never bake HEDGER_MODE=undefined into a container env.
+inst.config.mode ??= "hedge";
+inst.config.market ??= "MON";
 
 console.log(
   `${containerName(address)} · acct ${inst.config.accountId} · ${inst.config.strategy} · $${inst.config.notionalUsd} · ` +

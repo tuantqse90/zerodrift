@@ -94,6 +94,11 @@ export interface PerplExecutor {
   cancel(intentId: string): Promise<void>;
   /** Cancel every active intent (and any live resting orders). */
   cancelAll(): Promise<void>;
+  /** True while an intent is still working (active with size remaining). The venue can
+   * kill an order without a callback — PostOnly reject, admin cancel, repost-storm
+   * halt — and a quoter that only tracks its own id strings would rest a phantom
+   * forever. Poll this to heal. */
+  isLive(intentId: string): boolean;
   onFill(cb: (f: FillEvent) => void): void;
   /** Realized funding credit at a settlement (live only; paper never fires). */
   onFundingCredit(cb: (usd: number) => void): void;
@@ -312,6 +317,11 @@ export class LivePerplExecutor implements PerplExecutor {
     for (const intent of this.intents.values()) {
       if (intent.active) await this.cancel(intent.intentId);
     }
+  }
+
+  isLive(intentId: string): boolean {
+    const i = this.intents.get(intentId);
+    return !!i && i.active && i.remainingSz > 1e-9;
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -775,6 +785,11 @@ export class PaperPerplExecutor implements PerplExecutor {
     for (const i of this.intents.values()) i.active = false;
   }
 
+  isLive(intentId: string): boolean {
+    const i = this.intents.get(intentId);
+    return !!i && i.active && i.remainingSz > 1e-9;
+  }
+
   private tick(): void {
     const book = this.feed.getBook();
     if (!book) return;
@@ -813,9 +828,19 @@ export class PaperPerplExecutor implements PerplExecutor {
         p.sizeMon = newSize;
         p.side = dir;
       } else {
-        // Opening against an existing opposite position nets it down.
-        p.sizeMon -= sz;
-        if (p.sizeMon <= 1e-9) this.pos = { side: "flat", sizeMon: 0, entryPx: 0 };
+        // Opening against an existing opposite position nets it down. The netted
+        // amount is a real close: realize its PnL (this branch used to skip that —
+        // unreachable in hedge mode, load-bearing for two-sided MM). Any excess
+        // beyond the old position flips to the new side at the fill price.
+        const netted = Math.min(sz, p.sizeMon);
+        const pnl = p.side === "short" ? (p.entryPx - px) * netted : (px - p.entryPx) * netted;
+        this.bal.balanceUsd += pnl;
+        const excess = sz - netted;
+        if (excess > 1e-9) this.pos = { side: dir, sizeMon: excess, entryPx: px };
+        else {
+          p.sizeMon -= netted;
+          if (p.sizeMon <= 1e-9) this.pos = { side: "flat", sizeMon: 0, entryPx: 0 };
+        }
       }
     } else {
       // Closing: realize PnL into the balance.

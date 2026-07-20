@@ -11,11 +11,15 @@ interface CloudStatus {
   running?: boolean;
   live?: boolean;
   strategy?: string;
+  mode?: string;
+  market?: string;
   notionalUsd?: number;
   startedAt?: string;
   /** Capability URL — only ever returned by the signature-gated start/feed calls. */
   feedUrl?: string;
 }
+
+const MARKETS = ["MON", "BTC", "ETH", "SOL", "HYPE", "ZEC"] as const;
 
 // The feed URL is a secret (whoever has it reads your fills). Cache it per wallet so
 // the link survives reloads without asking for another signature.
@@ -32,6 +36,8 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
   const [st, setSt] = useState<CloudStatus | null>(null);
   const [notional, setNotional] = useState("50");
   const [live, setLive] = useState(false);
+  const [mm, setMm] = useState(false);
+  const [market, setMarket] = useState<(typeof MARKETS)[number]>("MON");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [ack, setAck] = useState(false);
@@ -72,6 +78,15 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
       setMsg("Notional must be $10–$2000.");
       return;
     }
+    // Starting MM over an account whose last instance was the HEDGE treats any resting
+    // hedge short as inventory and flattens it — the owner's spot becomes unhedged.
+    // That must be a decision, not a surprise.
+    if (mm && live && st?.exists && (st.mode ?? "hedge") === "hedge") {
+      const ok = window.confirm(
+        "This account's previous instance was a HEDGE. Starting MM LIVE will treat any remaining hedge short as inventory and flatten it, leaving your spot MON unhedged. Continue?",
+      );
+      if (!ok) return;
+    }
     setBusy(true);
     setMsg("");
     try {
@@ -88,6 +103,8 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
           edPrivHex: keys.edPrivHex,
           notionalUsd: usd,
           strategy,
+          mode: mm ? "mm" : "hedge",
+          market: mm ? market : "MON",
           live,
           ts,
           sig,
@@ -95,6 +112,10 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
       });
       const body = await r.json();
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      // A pre-mm server ignores unknown fields and would silently launch the MON
+      // hedge engine instead — the echo is the capability check.
+      if (mm && body.mode !== "mm")
+        throw new Error("server does not support MM mode yet — instance NOT started as MM; press Stop and retry after the server updates");
       setSt(body as CloudStatus);
       if (body.feedUrl) {
         localStorage.setItem(feedKey(address), body.feedUrl);
@@ -172,7 +193,7 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
       {st.exists && st.running ? (
         <>
           <div className="fb-hint" style={{ textAlign: "center" }}>
-            🟢 running {st.live ? "LIVE" : "paper"} · {st.strategy} · ${st.notionalUsd}
+            🟢 running {st.live ? "LIVE" : "paper"} · {st.mode === "mm" ? `MM ${st.market ?? ""}` : st.strategy} · ${st.notionalUsd}
             {" · "}
             {feed ? (
               <a href={feed} target="_blank" rel="noreferrer">
@@ -211,6 +232,32 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
               real orders (LIVE)
             </label>
           </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <label className="d" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={mm} onChange={(e) => setMm(e.target.checked)} />
+              standalone MM — two-sided quotes, no spot hedge, target inventory 0
+            </label>
+            {mm && (
+              <select
+                className="mono"
+                value={market}
+                onChange={(e) => setMarket(e.target.value as (typeof MARKETS)[number])}
+                style={{ marginLeft: "auto" }}
+              >
+                {MARKETS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {mm && (
+            <div className="fb-hint">
+              ⚠️ MM mode is NOT delta-neutral between fills — it carries bounded inventory risk.
+              Fees are 0.9bps/side; on tight books (BTC/ETH) the spread rarely covers them.
+            </div>
+          )}
           <label className="d cloud-ack">
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
             <span>
@@ -221,7 +268,7 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
             </span>
           </label>
           <button className="btn primary" disabled={busy || !wallet || !ack} onClick={doStart}>
-            {busy ? "starting…" : `▶ Run ${strategy} on server${live ? " · LIVE" : " · paper"}`}
+            {busy ? "starting…" : `▶ Run ${mm ? `MM on ${market}` : strategy} on server${live ? " · LIVE" : " · paper"}`}
           </button>
         </>
       )}

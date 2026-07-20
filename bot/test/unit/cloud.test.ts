@@ -11,6 +11,8 @@ const CFG: InstanceConfig = {
   accountId: "3710",
   notionalUsd: 50,
   strategy: "avellaneda",
+  mode: "hedge",
+  market: "MON",
   live: true,
   createdAt: "2026-07-19T00:00:00.000Z",
   feedName: "status-u-deadbeefdeadbeefdead.json",
@@ -62,6 +64,14 @@ describe("start validation", () => {
     expect(validateStart({ ...good, ts: Date.now() - 10 * 60_000 })).toBe("stale ts");
     expect(validateStart({ ...good, edPrivHex: "0x1234" })).toBe("bad edPrivHex");
   });
+  test("mode/market are optional (pre-mm clients) but validated when present", () => {
+    expect(validateStart(good)).toBeNull(); // neither field sent
+    expect(validateStart({ ...good, mode: "mm", market: "ZEC" })).toBeNull();
+    expect(validateStart({ ...good, mode: "hedge" })).toBeNull();
+    expect(validateStart({ ...good, mode: "yolo" as any })).toBe("bad mode");
+    expect(validateStart({ ...good, market: "DOGE" })).toBe("bad market");
+    expect(validateStart({ ...good, market: "mon" })).toBe("bad market"); // whitelist is uppercase
+  });
 });
 
 describe("docker spawn args", () => {
@@ -84,6 +94,18 @@ describe("docker spawn args", () => {
     // resource limits present
     expect(joined).toContain("--cpus");
     expect(joined).toContain("--memory");
+  });
+
+  test("mode picks the entrypoint and both mode+market land in the env", () => {
+    const hedge = dockerRunArgs(CFG, KEYS).join(" ");
+    expect(hedge).toContain("HEDGER_MODE=hedge");
+    expect(hedge).toContain("HEDGER_MARKET=MON");
+    expect(hedge.endsWith("bun run hedger")).toBe(true);
+
+    const mm = dockerRunArgs({ ...CFG, mode: "mm", market: "ZEC" }, KEYS).join(" ");
+    expect(mm).toContain("HEDGER_MODE=mm");
+    expect(mm).toContain("HEDGER_MARKET=ZEC");
+    expect(mm.endsWith("bun run mm")).toBe(true);
   });
 });
 

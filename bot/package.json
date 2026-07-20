@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "hedger": "bun run src/hedger/run.ts",
+    "mm": "bun run src/hedger/run-mm.ts",
     "hedger:enroll": "bun run src/hedger/enroll.ts",
     "hedger:bootstrap": "bun run src/hedger/bootstrap-account.ts",
     "probe:testnet": "bun run src/hedger/probe-testnet.ts",
     "test": "bun test",
     "test:unit": "bun test test/unit",
     "test:integration": "bun test test/integration",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "scan:markets": "bun run src/hedger/market-scan.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.8.0",

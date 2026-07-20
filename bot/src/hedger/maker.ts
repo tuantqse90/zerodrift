@@ -50,6 +50,11 @@ export class MakerWorker {
     if (this.done || this.canceled || !this.exec.isReady()) return;
     const px = joinPrice(this.side, book);
 
+    // Heal phantoms: a venue-side kill (PostOnly reject, admin cancel, repost-storm
+    // halt) leaves intentId pointing at a dead order and the worker waiting forever —
+    // the same class of wedge as the live churn leg observed 2026-07-19.
+    if (this.intentId && !this.exec.isLive(this.intentId)) this.intentId = null;
+
     if (!this.intentId) {
       this.intentId = await this.exec.placeMaker(this.side, px, this.remaining);
       this.intentPx = px;

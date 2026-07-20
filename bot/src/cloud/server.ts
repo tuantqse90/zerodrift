@@ -19,17 +19,22 @@ import {
  * fresh start opens a fresh hedge; any other state is preserved (a config
  * change on a running instance must resume, not re-enter). */
 export function resetTerminalState(dataDir: string): boolean {
-  const stateFile = join(dataDir, "perpl-hedger-state.json");
-  try {
-    const st = JSON.parse(readFileSync(stateFile, "utf8")) as { state?: string };
-    if (st?.state === "CLOSED") {
-      rmSync(stateFile, { force: true });
-      return true;
+  // Both engines persist a durable state file with a terminal CLOSED value; each must
+  // be reset or an explicit re-start of that mode boots straight into exit(0).
+  let reset = false;
+  for (const name of ["perpl-hedger-state.json", "mm-state.json"]) {
+    const stateFile = join(dataDir, name);
+    try {
+      const st = JSON.parse(readFileSync(stateFile, "utf8")) as { state?: string };
+      if (st?.state === "CLOSED") {
+        rmSync(stateFile, { force: true });
+        reset = true;
+      }
+    } catch {
+      /* no state file yet — nothing to reset */
     }
-  } catch {
-    /* no state file yet — nothing to reset */
   }
-  return false;
+  return reset;
 }
 
 const PORT = Number(process.env.CLOUD_PORT || 8796);
@@ -64,7 +69,12 @@ function instPath(address: string): string {
 function loadInstance(address: string): StoredInstance | null {
   const p = instPath(address);
   if (!existsSync(p)) return null;
-  return JSON.parse(readFileSync(p, "utf8")) as StoredInstance;
+  const inst = JSON.parse(readFileSync(p, "utf8")) as StoredInstance;
+  // Records written before the mm mode existed lack these — normalize so respawns
+  // never emit HEDGER_MODE=undefined into a container env.
+  inst.config.mode ??= "hedge";
+  inst.config.market ??= "MON";
+  return inst;
 }
 
 function saveInstance(inst: StoredInstance): void {
@@ -84,8 +94,13 @@ export function canonicalMessage(action: CloudAction, address: string, ts: numbe
 export interface StartBody {
   address: string; accountId: string; apiKey: string; edPrivHex: string;
   notionalUsd: number; strategy: "churn" | "avellaneda"; live: boolean;
+  /** Optional (default "hedge"/"MON") so pre-mm clients keep working unchanged. */
+  mode?: "hedge" | "mm"; market?: string;
   ts: number; sig: `0x${string}`;
 }
+
+/** Markets that exist on Perpl mainnet — a typo here should 400, not crash-loop a container. */
+export const MARKETS = ["MON", "BTC", "ETH", "SOL", "HYPE", "ZEC"] as const;
 
 export function validateStart(b: Partial<StartBody>): string | null {
   if (!/^0x[0-9a-fA-F]{40}$/.test(b.address ?? "")) return "bad address";
@@ -95,6 +110,10 @@ export function validateStart(b: Partial<StartBody>): string | null {
   if (typeof b.notionalUsd !== "number" || !(b.notionalUsd >= 10 && b.notionalUsd <= MAX_NOTIONAL))
     return `notionalUsd must be 10..${MAX_NOTIONAL}`;
   if (b.strategy !== "churn" && b.strategy !== "avellaneda") return "bad strategy";
+  if (b.mode !== undefined && b.mode !== "hedge" && b.mode !== "mm") return "bad mode";
+  if (b.market !== undefined && !MARKETS.includes(b.market as (typeof MARKETS)[number])) return "bad market";
+  // The hedge FSM's spot leg is MON — a non-MON market only makes sense as standalone MM.
+  if (b.market !== undefined && b.market !== "MON" && b.mode !== "mm") return "non-MON market requires mm mode";
   if (typeof b.live !== "boolean") return "bad live flag";
   if (typeof b.ts !== "number" || Math.abs(Date.now() - b.ts) > SIG_WINDOW_MS) return "stale ts";
   if (typeof b.sig !== "string" || !b.sig.startsWith("0x")) return "bad sig";
@@ -136,6 +155,8 @@ function publicView(inst: StoredInstance, running: boolean, startedAt?: string) 
     startedAt,
     live: config.live,
     strategy: config.strategy,
+    mode: config.mode ?? "hedge",
+    market: config.market ?? "MON",
     notionalUsd: config.notionalUsd,
     createdAt: config.createdAt,
     container: containerName(config.address),
@@ -190,6 +211,8 @@ function main(): void {
           accountId: body.accountId,
           notionalUsd: body.notionalUsd,
           strategy: body.strategy,
+          mode: body.mode ?? "hedge",
+          market: body.market ?? "MON",
           live: body.live,
           createdAt: existing?.config.createdAt ?? new Date().toISOString(),
           feedName: existing?.config.feedName ?? `status-u-${feedId(address, SECRET)}.json`,

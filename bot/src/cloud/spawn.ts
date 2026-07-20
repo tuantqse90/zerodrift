@@ -12,6 +12,10 @@ export interface InstanceConfig {
   accountId: string; // Perpl exchange account id (digits)
   notionalUsd: number;
   strategy: "churn" | "avellaneda";
+  /** hedge = spot+short FSM (run.ts); mm = standalone two-sided MM (run-mm.ts). */
+  mode: "hedge" | "mm";
+  /** Perpl market symbol — whitelisted in validateStart. */
+  market: string;
   live: boolean; // false = paper (simulated fills, keys unused)
   createdAt: string;
   /** HMAC-derived status feed file name — the capability to read this user's feed. */
@@ -47,6 +51,8 @@ export function dockerRunArgs(cfg: InstanceConfig, keys: UserKeys, unwind = fals
     "-v", `${ZD_ROOT}:${ZD_ROOT}`,
     "-w", `${ZD_ROOT}/bot`,
     "-e", `HEDGER_STRATEGY=${cfg.strategy}`,
+    "-e", `HEDGER_MODE=${cfg.mode}`,
+    "-e", `HEDGER_MARKET=${cfg.market}`,
     "-e", "HEDGER_SPOT_MANAGED=false",
     "-e", `HEDGER_UNWIND=${unwind}`,
     "-e", `HEDGER_NOTIONAL_USD=${cfg.notionalUsd}`,
@@ -59,7 +65,7 @@ export function dockerRunArgs(cfg: InstanceConfig, keys: UserKeys, unwind = fals
     "-e", "MONAD_RPC_URL=https://rpc.monad.xyz",
   ];
   if (cfg.live) args.push("-e", "HEDGER_LIVE=true");
-  args.push(IMAGE, "bun", "run", "hedger");
+  args.push(IMAGE, "bun", "run", cfg.mode === "mm" ? "mm" : "hedger");
   return args;
 }
 

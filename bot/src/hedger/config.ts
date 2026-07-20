@@ -4,10 +4,14 @@
 import { envBool, envNum, envStr } from "../lib/config";
 
 export type HedgerStrategy = "churn" | "avellaneda";
+/** hedge = spot + short with delta guards (run.ts); mm = standalone two-sided
+ * market making with no spot leg and target inventory 0 (run-mm.ts). */
+export type HedgerMode = "hedge" | "mm";
 
 export interface HedgerConfig {
   /** Active volume-farming strategy. churn = discrete round-trips; avellaneda = continuous MM. */
   strategy: HedgerStrategy;
+  mode: HedgerMode;
   market: string;
   notionalUsd: number;
   /** Leverage in hundredths (200 = 2x). */
@@ -46,6 +50,13 @@ export interface HedgerConfig {
   asClipFrac: number;
   /** Pull a quote side once the short strays this fraction from target (hard inventory band). */
   asInvBandFrac: number;
+  // ── Standalone MM (mode=mm) knobs — inventory is signed, target is 0 ──────
+  /** Quote size as a fraction of baseMon (= notionalUsd/mid). */
+  mmClipFrac: number;
+  /** Pull the growing side once |inventory| exceeds this fraction of baseMon. */
+  mmInvBandFrac: number;
+  /** Force a maker rebalance toward flat beyond this fraction of baseMon. */
+  mmMaxInvFrac: number;
   deltaSoftPct: number;
   deltaHardPct: number;
   /** +1: rate>0 ⇒ longs pay shorts (we earn on our short). Flip to -1 if proven inverted. */
@@ -85,6 +96,10 @@ function parseStrategy(): HedgerStrategy {
   return envStr("HEDGER_STRATEGY", "churn").toLowerCase() === "avellaneda" ? "avellaneda" : "churn";
 }
 
+export function parseMode(raw: string): HedgerMode {
+  return raw.toLowerCase() === "mm" ? "mm" : "hedge";
+}
+
 const NOTIONAL_USD = envNum("HEDGER_NOTIONAL_USD", 100);
 
 /** The taker budget is an emergency valve for the delta guard, so it has to scale with
@@ -94,6 +109,7 @@ const DEFAULT_DAILY_TAKER_USD = Math.max(25, NOTIONAL_USD * 0.25);
 
 export const HEDGER_CONFIG: HedgerConfig = {
   strategy: parseStrategy(),
+  mode: parseMode(envStr("HEDGER_MODE", "hedge")),
   market: envStr("HEDGER_MARKET", "MON"),
   notionalUsd: NOTIONAL_USD,
   leverage: envNum("HEDGER_LEVERAGE", 200),
@@ -119,6 +135,11 @@ export const HEDGER_CONFIG: HedgerConfig = {
   // into the hard-delta guard. 0.15 was a footgun (one fill = 15% delta jump).
   asClipFrac: envNum("HEDGER_AS_CLIP_FRAC", 0.03),
   asInvBandFrac: envNum("HEDGER_AS_INV_BAND_FRAC", 0.02),
+  mmClipFrac: envNum("HEDGER_MM_CLIP_FRAC", 0.03),
+  // Around a target of 0 the band is breathing room, not hedge tolerance: wide enough
+  // for a few one-sided fills (≈5 clips) before the growing side gets pulled.
+  mmInvBandFrac: envNum("HEDGER_MM_INV_BAND_FRAC", 0.15),
+  mmMaxInvFrac: envNum("HEDGER_MM_MAX_INV_FRAC", 0.5),
   deltaSoftPct: envNum("HEDGER_DELTA_SOFT_PCT", 1),
   deltaHardPct: envNum("HEDGER_DELTA_HARD_PCT", 3),
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,
