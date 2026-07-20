@@ -173,6 +173,9 @@ export class LivePerplExecutor implements PerplExecutor {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   private ready = false;
+  /** True once ANY account snapshot has arrived on this process — distinguishes a
+   * rejected sign-in (never true) from an ordinary mid-session drop. */
+  private sawSnapshot = false;
   private lastSn: number | undefined;
   private head = 0;
   private reconnectEpoch = 0;
@@ -439,6 +442,17 @@ export class LivePerplExecutor implements PerplExecutor {
       this.tickTimer = null;
       this.ready = false;
       this.reconnectEpoch += 1; // invalidates "no status ⇒ expired" reasoning
+      // A close that arrives before the account snapshot means sign-in itself failed
+      // (3401 = auth). That used to be silent: the executor just never went ready and
+      // the main loop span forever with no log, no alert, no status write. Say it out
+      // loud — observed live 2026-07-20, a rejected key looked exactly like a hang.
+      const code = typeof ev?.code === "number" ? ev.code : "?";
+      if (!this.sawSnapshot) {
+        console.log(
+          `[${new Date().toISOString()}] perpl ws closed before snapshot (code=${code}) — ` +
+            `sign-in rejected or dropped; retry #${this.retry}`,
+        );
+      }
       // 3401 = auth failure → reconnect re-signs with fresh timestamp/nonce anyway.
       this.reconnect();
     };
@@ -526,7 +540,10 @@ export class LivePerplExecutor implements PerplExecutor {
         // now does the executor go ready. A mismatched PERPL_ACCOUNT_ID never sets
         // balance in mt:19 — keep it not-ready in that case too.
         this.applyPositions(msg.d ?? []);
-        if (this.balance !== null) this.ready = true;
+        if (this.balance !== null) {
+          this.ready = true;
+          this.sawSnapshot = true;
+        }
         break;
       }
       case 21: {

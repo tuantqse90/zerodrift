@@ -148,6 +148,7 @@ async function main(): Promise<void> {
   }
 
   let lastBookAt = Date.now();
+  let lastReadyAt = Date.now();
   let takerSpentToday = 0;
   let takerDay = new Date().toISOString().slice(0, 10);
   let lastDigest = Date.now();
@@ -175,6 +176,20 @@ async function main(): Promise<void> {
         await sleep(1000);
         feed.start();
         lastBookAt = Date.now();
+      }
+
+      // The book has a staleness watchdog above; the EXECUTOR had none. A rejected
+      // sign-in leaves it not-ready forever, and this loop then spins silently — no
+      // log, no alert, no status write — which reads as a dead container holding a
+      // live position. Observed 2026-07-20. Surface it instead.
+      if (exec.isReady()) lastReadyAt = Date.now();
+      else if (Date.now() - lastReadyAt > 120_000) {
+        void alertOnce(
+          "ph:exec-not-ready",
+          600_000,
+          `🚨 ZeroDrift: perp executor not ready for ${Math.round((Date.now() - lastReadyAt) / 60_000)}min — ` +
+            `sign-in likely rejected. Position is UNMANAGED (not churning, delta not enforced).`,
+        );
       }
 
       if (!book || !exec.isReady()) {
