@@ -1759,3 +1759,17 @@ footer {
     50% { box-shadow: 0 0 0 2px hsl(var(--card)), 0 0 22px hsl(var(--z-red) / 0.85); }
   }
 }
+
+/* Wallet chip — WHICH wallet + WHICH Perpl account is live. Both identities are
+   shown because they can legitimately differ (keys from another exchange account),
+   and that mismatch decides where real orders land. */
+.wallet-chip { gap: 7px; text-decoration: none; }
+.wallet-chip .chip-acct {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+.wallet-chip.on .chip-acct { color: hsl(var(--mint)); }
+@media (max-width: 900px) { .wallet-chip .chip-acct { display: none; } }

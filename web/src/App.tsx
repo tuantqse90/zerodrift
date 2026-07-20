@@ -152,6 +152,11 @@ export default function App() {
   }, []);
 
   const onHedgeChange = useCallback((spotMon: number) => setHedgeSpotMon(spotMon), []);
+  const [identity, setIdentity] = useState<{ address: Address; perplAccountId: number | null } | null>(null);
+  const onIdentity = useCallback(
+    (id: { address: Address; perplAccountId: number | null } | null) => setIdentity(id),
+    [],
+  );
 
   const bookMid = book ? (book.bids[0].px + book.asks[0].px) / 2 : null;
   const lastCandle = candles.length ? candles[candles.length - 1].c : null;
@@ -303,6 +308,28 @@ export default function App() {
             <i />
             Engine
           </span>
+          {identity ? (
+            <a
+              className="sdot wallet-chip on"
+              href="#hedge-console"
+              title={`Wallet ${identity.address}${
+                identity.perplAccountId ? ` · Perpl account #${identity.perplAccountId}` : " · no Perpl keys"
+              }`}
+            >
+              <i />
+              <span className="mono">
+                {identity.address.slice(0, 6)}…{identity.address.slice(-4)}
+              </span>
+              <span className="chip-acct mono">
+                {identity.perplAccountId ? `#${identity.perplAccountId}` : "no keys"}
+              </span>
+            </a>
+          ) : (
+            <span className="sdot wallet-chip" title="No wallet connected">
+              <i />
+              not connected
+            </span>
+          )}
         </div>
       </nav>
 
@@ -455,6 +482,7 @@ export default function App() {
             session={session}
             setSession={setSession}
             onHedgeChange={onHedgeChange}
+            onIdentity={onIdentity}
           />
           <section className="card glass engine-mini">
             <div className="card-head">

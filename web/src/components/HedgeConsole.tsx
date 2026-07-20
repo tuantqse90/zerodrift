@@ -46,9 +46,11 @@ interface Props {
   session: TradingSession | null;
   setSession: (s: TradingSession | null) => void;
   onHedgeChange: (spotMon: number, target: number, working: boolean) => void;
+  /** Report the active identity (wallet + Perpl exchange account) for the header chip. */
+  onIdentity?: (id: { address: Address; perplAccountId: number | null } | null) => void;
 }
 
-export function HedgeConsole({ market, book, session, setSession, onHedgeChange }: Props) {
+export function HedgeConsole({ market, book, session, setSession, onHedgeChange, onIdentity }: Props) {
   const [address, setAddress] = useState<Address | null>(null);
   const [wallet, setWallet] = useState<WalletClient | null>(null);
   const [monBalance, setMonBalance] = useState(0);
@@ -125,6 +127,13 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       rerender();
     };
   }, [session, rerender]);
+
+  // Surface WHICH wallet and WHICH Perpl account are live, so a wallet/account
+  // mismatch (keys from a different exchange account) is visible at a glance.
+  const perplAccountId = session?.account?.id ?? null;
+  useEffect(() => {
+    onIdentity?.(address ? { address, perplAccountId } : null);
+  }, [address, perplAccountId, onIdentity]);
 
   // Hedge bookkeeping follows the active wallet: switching accounts must never leave
   // the previous wallet's target size / epoch id on screen (it would size real orders).
