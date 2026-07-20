@@ -85,10 +85,17 @@ function parseStrategy(): HedgerStrategy {
   return envStr("HEDGER_STRATEGY", "churn").toLowerCase() === "avellaneda" ? "avellaneda" : "churn";
 }
 
+const NOTIONAL_USD = envNum("HEDGER_NOTIONAL_USD", 100);
+
+/** The taker budget is an emergency valve for the delta guard, so it has to scale with
+ * the position: a flat $25 (tuned at $100 notional) cannot restore a $2000 hedge, and
+ * cloud instances never set the env — they only get HEDGER_NOTIONAL_USD. */
+const DEFAULT_DAILY_TAKER_USD = Math.max(25, NOTIONAL_USD * 0.25);
+
 export const HEDGER_CONFIG: HedgerConfig = {
   strategy: parseStrategy(),
   market: envStr("HEDGER_MARKET", "MON"),
-  notionalUsd: envNum("HEDGER_NOTIONAL_USD", 100),
+  notionalUsd: NOTIONAL_USD,
   leverage: envNum("HEDGER_LEVERAGE", 200),
   churnIntervalMs: envNum("HEDGER_CHURN_INTERVAL_MS", 900_000),
   churnFraction: envNum("HEDGER_CHURN_FRACTION", 0.25),
@@ -117,7 +124,7 @@ export const HEDGER_CONFIG: HedgerConfig = {
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,
   fundingPauseApr: envNum("HEDGER_FUNDING_PAUSE_APR", 10),
   fundingResumeApr: envNum("HEDGER_FUNDING_RESUME_APR", 5),
-  maxDailyTakerUsd: envNum("HEDGER_MAX_DAILY_TAKER_USD", 25),
+  maxDailyTakerUsd: envNum("HEDGER_MAX_DAILY_TAKER_USD", DEFAULT_DAILY_TAKER_USD),
   takerSlippageBps: envNum("HEDGER_TAKER_SLIPPAGE_BPS", 50),
   repriceMs: envNum("HEDGER_REPRICE_MS", 60_000),
   churnLegTimeoutMs: envNum("HEDGER_CHURN_LEG_TIMEOUT_MS", 10 * 60_000),

@@ -68,8 +68,8 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
       return;
     }
     const usd = Number(notional);
-    if (!(usd >= 10 && usd <= 500)) {
-      setMsg("Notional must be $10–$500.");
+    if (!(usd >= 10 && usd <= 2000)) {
+      setMsg("Notional must be $10–$2000.");
       return;
     }
     setBusy(true);
