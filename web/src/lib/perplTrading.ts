@@ -32,16 +32,30 @@ function readAt(storageKey: string): PerplKeys | null {
   }
 }
 
+/** True once ANY wallet has scoped keys stored — the legacy blob then belongs to one
+ * of them, never to a newly connecting account. */
+function hasScopedKeys(): boolean {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(`${LS_PREFIX}:`)) return true;
+  }
+  return false;
+}
+
 export function loadKeys(address: string | null | undefined): PerplKeys | null {
   if (!address) return null;
   const scoped = readAt(lsKey(address));
   if (scoped) return scoped;
-  // one-time migration of a pre-scoping global blob to this wallet
-  const legacy = readAt(LS_LEGACY);
-  if (legacy) {
-    saveKeys(address, legacy);
-    localStorage.removeItem(LS_LEGACY);
-    return legacy;
+  // One-time migration of a pre-scoping global blob — ONLY for the first wallet ever
+  // seen. Otherwise a second account would silently inherit the first one's Perpl
+  // keys and trade on the wrong exchange account.
+  if (!hasScopedKeys()) {
+    const legacy = readAt(LS_LEGACY);
+    if (legacy) {
+      saveKeys(address, legacy);
+      localStorage.removeItem(LS_LEGACY);
+      return legacy;
+    }
   }
   return null;
 }

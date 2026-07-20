@@ -18,18 +18,26 @@ interface HedgeLocal {
   epochId: number | null;
   fillOids: number[];
 }
+// Hedge bookkeeping is PER WALLET: a target size / epoch id belongs to one account.
+// A pre-scoping build stored one global blob — it is discarded on sight rather than
+// migrated, because showing wallet A's hedge to wallet B (and sizing orders from it)
+// is far worse than asking for the size again.
 const LS_HEDGE = "zerodrift.hedge";
+const hedgeKey = (address: string) => `${LS_HEDGE}:${address.toLowerCase()}`;
 
-function loadHedge(): HedgeLocal | null {
+function loadHedge(address: string | null | undefined): HedgeLocal | null {
+  localStorage.removeItem(LS_HEDGE); // legacy global blob — never trusted
+  if (!address) return null;
   try {
-    return JSON.parse(localStorage.getItem(LS_HEDGE) || "null");
+    return JSON.parse(localStorage.getItem(hedgeKey(address)) || "null");
   } catch {
     return null;
   }
 }
-function saveHedge(h: HedgeLocal | null): void {
-  if (h) localStorage.setItem(LS_HEDGE, JSON.stringify(h));
-  else localStorage.removeItem(LS_HEDGE);
+function saveHedge(address: string | null | undefined, h: HedgeLocal | null): void {
+  if (!address) return;
+  if (h) localStorage.setItem(hedgeKey(address), JSON.stringify(h));
+  else localStorage.removeItem(hedgeKey(address));
 }
 
 interface Props {
@@ -58,7 +66,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     localStorage.setItem("zerodrift.strategy", s);
   };
   const [note, setNote] = useState<{ kind: "ok" | "err" | ""; text: string }>({ kind: "", text: "" });
-  const [hedge, setHedge] = useState<HedgeLocal | null>(loadHedge());
+  const [hedge, setHedge] = useState<HedgeLocal | null>(null);
   const [keysVersion, setKeysVersion] = useState(0); // bump to reload keys for the active wallet
   const [, force] = useState(0);
   const rerender = useCallback(() => force((n) => n + 1), []);
@@ -111,12 +119,20 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       setHedge((h) => {
         if (!h) return h;
         const next = { ...h, fillOids: [...new Set([...h.fillOids, f.oid])] };
-        saveHedge(next);
+        saveHedge(address, next);
         return next;
       });
       rerender();
     };
   }, [session, rerender]);
+
+  // Hedge bookkeeping follows the active wallet: switching accounts must never leave
+  // the previous wallet's target size / epoch id on screen (it would size real orders).
+  useEffect(() => {
+    setHedge(loadHedge(address));
+    setSizeInput("");
+    setChurnOn(false); // never carry auto-farm across an account switch
+  }, [address]);
 
   // Silently restore the wallet on load if it's still authorized, then track account
   // switches / disconnects — so keys and the session re-scope to the active address.
@@ -407,7 +423,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     }
     const h: HedgeLocal = { targetMon: size, openedAt: Date.now(), epochId: null, fillOids: [] };
     setHedge(h);
-    saveHedge(h);
+    saveHedge(address, h);
     setWorking("opening");
     setNote({ kind: "", text: "Working a PostOnly short at the ask — fills at 0.9bps maker fee." });
   };
@@ -424,7 +440,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
     }
     const h: HedgeLocal = { targetMon: size, openedAt: Date.now(), epochId: null, fillOids: [] };
     setHedge(h);
-    saveHedge(h);
+    saveHedge(address, h);
     setSizeInput(size.toFixed(2));
     setWorking("opening");
     setChurnOn(true); // churn kicks in automatically once the short is filled
@@ -458,7 +474,7 @@ export function HedgeConsole({ market, book, session, setSession, onHedgeChange 
       setNote({ kind: "ok", text: `Epoch attested on-chain: ${hash.slice(0, 14)}…` });
       const next = { ...hedge, epochId: 0 };
       setHedge(next);
-      saveHedge(next);
+      saveHedge(address, next);
     } catch (e) {
       setNote({ kind: "err", text: `Attestation failed: ${(e as Error).message.slice(0, 120)}` });
     }
