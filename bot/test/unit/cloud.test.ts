@@ -3,7 +3,8 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { verifyMessage } from "viem";
 import { decryptJson, encryptJson, newSecretHex } from "../../src/cloud/crypto";
 import { canonicalMessage, validateStart } from "../../src/cloud/server";
-import { containerName, dockerRunArgs, statusFileName, type InstanceConfig } from "../../src/cloud/spawn";
+import { containerName, dockerRunArgs, legacyStatusFileName, type InstanceConfig } from "../../src/cloud/spawn";
+import { feedId } from "../../src/cloud/crypto";
 
 const CFG: InstanceConfig = {
   address: "0xAbCd00000000000000000000000000000000ef12".toLowerCase(),
@@ -12,6 +13,7 @@ const CFG: InstanceConfig = {
   strategy: "avellaneda",
   live: true,
   createdAt: "2026-07-19T00:00:00.000Z",
+  feedName: "status-u-deadbeefdeadbeefdead.json",
 };
 const KEYS = { apiKey: "tok_abcdef123456", edPrivHex: `0x${"7".repeat(64)}` };
 
@@ -73,7 +75,9 @@ describe("docker spawn args", () => {
     expect(joined).toContain("HEDGER_LIVE=true");
     // container identity is derived from the address, not the keys
     expect(containerName(CFG.address)).toBe("zd-u-abcd0000");
-    expect(statusFileName(CFG.address)).toBe("status-u-abcd0000.json");
+    // the feed file is the HMAC name from config, never derived from the address
+    expect(joined).toContain(`HEDGER_STATUS_FILE=/opt/zerodrift/status/${CFG.feedName}`);
+    expect(joined).not.toContain("status-u-abcd0000.json");
     // paper instance must NOT set HEDGER_LIVE
     const paper = dockerRunArgs({ ...CFG, live: false }, KEYS).join(" ");
     expect(paper).not.toContain("HEDGER_LIVE");
@@ -99,5 +103,19 @@ describe("resetTerminalState", () => {
     expect(resetTerminalState(dir)).toBe(false);
     expect(existsSync(f)).toBe(true);
     expect(resetTerminalState(mkdtempSync(join(tmpdir(), "zdc-empty-")))).toBe(false);
+  });
+});
+
+describe("feed id (capability)", () => {
+  test("is unguessable from the address alone and stable per secret", () => {
+    const secret = newSecretHex();
+    const a = feedId(CFG.address, secret);
+    expect(a).toHaveLength(20);
+    expect(a).toBe(feedId(CFG.address.toUpperCase(), secret)); // case-insensitive
+    expect(a).not.toContain(CFG.address.slice(2, 10)); // no address material leaks
+    expect(feedId(CFG.address, newSecretHex())).not.toBe(a); // secret-bound
+    expect(feedId("0x1111111111111111111111111111111111111111", secret)).not.toBe(a);
+    // the old public scheme is exactly what we must no longer publish
+    expect(legacyStatusFileName(CFG.address)).toBe("status-u-abcd0000.json");
   });
 });

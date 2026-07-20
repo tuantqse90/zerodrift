@@ -13,7 +13,7 @@ docker run -d --name zd-cloud --restart unless-stopped --network host \
   -v /opt/zerodrift:/opt/zerodrift \
   -e CLOUD_PORT=8796 \
   -e CLOUD_DIR=/opt/zerodrift/cloud \
-  -e CLOUD_MAX_INSTANCES=8 \
+  -e CLOUD_MAX_INSTANCES=25 \
   -e CLOUD_MAX_NOTIONAL_USD=500 \
   zd-cloud
 

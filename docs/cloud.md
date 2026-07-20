@@ -9,8 +9,8 @@ one to stop.
 1. Connect wallet + paste Perpl trade keys in the Hedge console (as usual).
 2. In **Cloud runner · 24/7**: pick notional ($10–$500), tick *real orders (LIVE)*
    or leave paper, hit **Run on server** → sign one `personal_sign` message.
-3. Done — close the tab. The instance card shows 🟢 running + a personal status
-   feed (`/status-u-<id>.json`). **Stop** or **Stop + unwind** anytime (signed).
+3. Done — close the tab. The instance card shows 🟢 running + a **private** status
+   feed link. **Stop** or **Stop + unwind** anytime (signed).
 
 ## Security model (honest version)
 
@@ -25,8 +25,17 @@ one to stop.
 - **Blast radius**: Perpl API keys **cannot withdraw funds** (protocol guarantee).
   Spot stays in the user's wallet — the server only ever runs the perp side
   (`HEDGER_SPOT_MANAGED=false`, never a wallet key).
-- **Caps**: max 8 instances, $10–$500 notional, per-container `--cpus 0.5
-  --memory 384m`, per-IP rate limiting.
+- **Feed privacy**: each instance publishes to `status-u-<HMAC(secret, address)>.json`.
+  The file name IS the capability — it is unguessable from the wallet address, and the
+  URL is returned only by the signed `start` / `feed` calls (the public `status`
+  endpoint returns run-state metadata only). The first cut derived the name from the
+  address, so anyone who knew a wallet could read that user's fills, PnL and position
+  size; `migrate-feeds.ts` moved every instance onto private names.
+- **Consent**: the console requires an explicit acknowledgement — keys go to the
+  server, are encrypted there, cannot withdraw, and the operator could read them —
+  before the Run button is enabled.
+- **Caps**: max 25 instances, $10–$500 notional, per-container `--cpus 0.5
+  --memory 256m` (measured: a live bot uses ~25MB / 2.5% CPU), per-IP rate limiting.
 
 ## Ops
 
@@ -40,6 +49,10 @@ docker ps --filter label=zerodrift.cloud=user
 
 # kill one user instance manually
 docker rm -f zd-u-<id>   # config+keys stay encrypted in cloud/instances/
+
+# maintenance (run inside a bun container with the repo + docker socket mounted)
+bun run src/cloud/migrate-feeds.ts [--apply]      # move instances onto private feed names
+bun run src/cloud/respawn.ts <0xaddr> [--apply]   # re-create a container from stored config
 ```
 
 Caddy routes `/api/cloud/*` → `localhost:8796`; per-user feeds ride the existing

@@ -14,6 +14,8 @@ export interface InstanceConfig {
   strategy: "churn" | "avellaneda";
   live: boolean; // false = paper (simulated fills, keys unused)
   createdAt: string;
+  /** HMAC-derived status feed file name — the capability to read this user's feed. */
+  feedName: string;
 }
 
 export const ZD_ROOT = process.env.ZD_ROOT || "/opt/zerodrift";
@@ -27,7 +29,8 @@ export function containerName(address: string): string {
   return `zd-u-${shortId(address)}`;
 }
 
-export function statusFileName(address: string): string {
+/** Legacy address-derived feed name — kept only so old public files can be cleaned up. */
+export function legacyStatusFileName(address: string): string {
   return `status-u-${shortId(address)}.json`;
 }
 
@@ -38,7 +41,7 @@ export function dockerRunArgs(cfg: InstanceConfig, keys: UserKeys, unwind = fals
     "run", "-d", "--name", name,
     "--network", "host",
     "--restart", "on-failure",
-    "--cpus", "0.5", "--memory", "384m",
+    "--cpus", "0.5", "--memory", "256m",
     "--label", "zerodrift.cloud=user",
     "--label", `zerodrift.address=${cfg.address}`,
     "-v", `${ZD_ROOT}:${ZD_ROOT}`,
@@ -50,7 +53,7 @@ export function dockerRunArgs(cfg: InstanceConfig, keys: UserKeys, unwind = fals
     "-e", `PERPL_ACCOUNT_ID=${cfg.accountId}`,
     "-e", `PERPL_API_KEY=${keys.apiKey}`,
     "-e", `PERPL_ED25519_PRIVKEY=${keys.edPrivHex}`,
-    "-e", `HEDGER_STATUS_FILE=${ZD_ROOT}/status/${statusFileName(cfg.address)}`,
+    "-e", `HEDGER_STATUS_FILE=${ZD_ROOT}/status/${cfg.feedName}`,
     "-e", `HEDGER_DATA_DIR=${ZD_ROOT}/cloud/data/${shortId(cfg.address)}`,
     "-e", "NT_API_BASE=http://localhost:8421",
     "-e", "MONAD_RPC_URL=https://rpc.monad.xyz",

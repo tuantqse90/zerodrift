@@ -8,10 +8,10 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, readdirSync, rmSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { verifyMessage } from "viem";
-import { decryptJson, encryptJson, newSecretHex } from "./crypto";
+import { decryptJson, encryptJson, feedId, newSecretHex } from "./crypto";
 import {
-  containerName, countRunningUserBots, inspectInstance, shortId, startInstance,
-  statusFileName, stopInstance, ZD_ROOT, type InstanceConfig, type UserKeys,
+  containerName, countRunningUserBots, inspectInstance, legacyStatusFileName, shortId,
+  startInstance, stopInstance, ZD_ROOT, type InstanceConfig, type UserKeys,
 } from "./spawn";
 
 /** A durably-CLOSED hedge makes the bot exit at boot (run.ts) — correct for
@@ -75,7 +75,9 @@ function saveInstance(inst: StoredInstance): void {
 }
 
 // ── validation ───────────────────────────────────────────────────────────────
-export function canonicalMessage(action: "start" | "stop", address: string, ts: number): string {
+export type CloudAction = "start" | "stop" | "feed";
+
+export function canonicalMessage(action: CloudAction, address: string, ts: number): string {
   return `zerodrift-cloud:${action}:${address.toLowerCase()}:${ts}`;
 }
 
@@ -99,7 +101,7 @@ export function validateStart(b: Partial<StartBody>): string | null {
   return null;
 }
 
-async function verifySig(action: "start" | "stop", address: string, ts: number, sig: `0x${string}`): Promise<boolean> {
+async function verifySig(action: CloudAction, address: string, ts: number, sig: `0x${string}`): Promise<boolean> {
   try {
     return await verifyMessage({
       address: address as `0x${string}`,
@@ -124,6 +126,8 @@ function limited(ip: string, max = 12, windowMs = 60_000): boolean {
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
 
+/** Safe metadata only. The feed URL is a CAPABILITY (whoever knows the file name can
+ * read that user's fills/PnL), so it is returned solely on signature-gated paths. */
 function publicView(inst: StoredInstance, running: boolean, startedAt?: string) {
   const { config } = inst;
   return {
@@ -135,8 +139,19 @@ function publicView(inst: StoredInstance, running: boolean, startedAt?: string) 
     notionalUsd: config.notionalUsd,
     createdAt: config.createdAt,
     container: containerName(config.address),
-    statusUrl: `${SITE}/${statusFileName(config.address)}`,
   };
+}
+
+function feedUrl(config: InstanceConfig): string {
+  return `${SITE}/${config.feedName}`;
+}
+
+/** A pre-HMAC instance published an address-derived (publicly guessable) feed. Delete
+ * the status file AND its history sibling so old links stop resolving. */
+export function dropLegacyFeed(address: string): void {
+  const legacy = join(ZD_ROOT, "status", legacyStatusFileName(address));
+  rmSync(legacy, { force: true });
+  rmSync(legacy.replace(/\.json$/, "-history.json"), { force: true });
 }
 
 function main(): void {
@@ -177,7 +192,9 @@ function main(): void {
           strategy: body.strategy,
           live: body.live,
           createdAt: existing?.config.createdAt ?? new Date().toISOString(),
+          feedName: existing?.config.feedName ?? `status-u-${feedId(address, SECRET)}.json`,
         };
+        dropLegacyFeed(address);
         const keys: UserKeys = { apiKey: body.apiKey, edPrivHex: body.edPrivHex };
         saveInstance({ config, encKeys: encryptJson(keys, SECRET) });
         if (resetTerminalState(join(ZD_ROOT, "cloud", "data", shortId(address))))
@@ -185,7 +202,7 @@ function main(): void {
         await startInstance(config, keys);
         console.log(`[cloud] start ${containerName(address)} live=${config.live} strat=${config.strategy} $${config.notionalUsd}`);
         const state = await inspectInstance(address);
-        return json(publicView({ config, encKeys: "" }, state.running, state.startedAt));
+        return json({ ...publicView({ config, encKeys: "" }, state.running, state.startedAt), feedUrl: feedUrl(config) });
       }
 
       if (req.method === "POST" && url.pathname === "/api/cloud/stop") {
@@ -208,6 +225,18 @@ function main(): void {
         if (b.forget) rmSync(instPath(address), { force: true });
         console.log(`[cloud] stop ${containerName(address)} forget=${!!b.forget}`);
         return json({ ok: true });
+      }
+
+      // The feed URL is handed out only to the wallet that owns the instance.
+      if (req.method === "POST" && url.pathname === "/api/cloud/feed") {
+        const b = (await req.json()) as { address?: string; ts?: number; sig?: `0x${string}` };
+        const address = (b.address || "").toLowerCase();
+        if (!/^0x[0-9a-f]{40}$/.test(address)) return json({ error: "bad address" }, 400);
+        if (typeof b.ts !== "number" || Math.abs(Date.now() - b.ts) > SIG_WINDOW_MS) return json({ error: "stale ts" }, 400);
+        if (!b.sig || !(await verifySig("feed", address, b.ts, b.sig))) return json({ error: "bad signature" }, 401);
+        const inst = loadInstance(address);
+        if (!inst) return json({ error: "no instance" }, 404);
+        return json({ feedUrl: feedUrl(inst.config) });
       }
 
       if (req.method === "GET" && url.pathname === "/api/cloud/health") {

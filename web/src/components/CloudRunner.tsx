@@ -13,8 +13,13 @@ interface CloudStatus {
   strategy?: string;
   notionalUsd?: number;
   startedAt?: string;
-  statusUrl?: string;
+  /** Capability URL — only ever returned by the signature-gated start/feed calls. */
+  feedUrl?: string;
 }
+
+// The feed URL is a secret (whoever has it reads your fills). Cache it per wallet so
+// the link survives reloads without asking for another signature.
+const feedKey = (a: string) => `zerodrift.cloud-feed:${a.toLowerCase()}`;
 
 interface Props {
   address: Address;
@@ -29,6 +34,8 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [ack, setAck] = useState(false);
+  const [feed, setFeed] = useState<string | null>(() => localStorage.getItem(feedKey(address)));
 
   const refresh = useCallback(async () => {
     try {
@@ -89,9 +96,38 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
       const body = await r.json();
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
       setSt(body as CloudStatus);
+      if (body.feedUrl) {
+        localStorage.setItem(feedKey(address), body.feedUrl);
+        setFeed(body.feedUrl);
+      }
       setMsg(`Server instance ${live ? "LIVE" : "paper"} started — you can close this tab.`);
     } catch (e) {
       setMsg(`Start failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revealFeed = async () => {
+    setBusy(true);
+    try {
+      const ts = Date.now();
+      const sig = await wallet?.signMessage({
+        account: address,
+        message: `zerodrift-cloud:feed:${address.toLowerCase()}:${ts}`,
+      });
+      if (!sig) throw new Error("signature rejected");
+      const r = await fetch("/api/cloud/feed", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: address.toLowerCase(), ts, sig }),
+      });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+      localStorage.setItem(feedKey(address), body.feedUrl);
+      setFeed(body.feedUrl);
+    } catch (e) {
+      setMsg(`Could not fetch the feed link: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -137,13 +173,15 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
         <>
           <div className="fb-hint" style={{ textAlign: "center" }}>
             🟢 running {st.live ? "LIVE" : "paper"} · {st.strategy} · ${st.notionalUsd}
-            {st.statusUrl && (
-              <>
-                {" · "}
-                <a href={st.statusUrl} target="_blank" rel="noreferrer">
-                  status feed
-                </a>
-              </>
+            {" · "}
+            {feed ? (
+              <a href={feed} target="_blank" rel="noreferrer">
+                status feed
+              </a>
+            ) : (
+              <button className="linkish" disabled={busy} onClick={revealFeed}>
+                reveal feed link
+              </button>
             )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -173,7 +211,16 @@ export function CloudRunner({ address, wallet, session, strategy }: Props) {
               real orders (LIVE)
             </label>
           </div>
-          <button className="btn primary" disabled={busy || !wallet} onClick={doStart}>
+          <label className="d cloud-ack">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            <span>
+              I understand: my Perpl <b>trade</b> keys are sent to the ZeroDrift server and stored
+              encrypted there. They <b>cannot withdraw funds</b> (Perpl protocol), and my spot MON
+              never leaves my wallet — but the server operator could read them. My wallet key is
+              never involved.
+            </span>
+          </label>
+          <button className="btn primary" disabled={busy || !wallet || !ack} onClick={doStart}>
             {busy ? "starting…" : `▶ Run ${strategy} on server${live ? " · LIVE" : " · paper"}`}
           </button>
         </>

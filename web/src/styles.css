@@ -1773,3 +1773,12 @@ footer {
 }
 .wallet-chip.on .chip-acct { color: hsl(var(--mint)); }
 @media (max-width: 900px) { .wallet-chip .chip-acct { display: none; } }
+
+/* Cloud runner consent — handing trade keys to a server is a decision, not a default. */
+.cloud-ack { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
+.cloud-ack input { margin-top: 3px; flex-shrink: 0; }
+button.linkish {
+  background: none; border: 0; padding: 0;
+  color: hsl(var(--primary)); text-decoration: underline; cursor: pointer; font: inherit;
+}
+button.linkish:disabled { opacity: 0.5; cursor: not-allowed; }
