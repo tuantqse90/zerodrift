@@ -71,6 +71,61 @@ export function signedInvMon(pos: PerpPosition): number {
   return pos.side === "short" ? pos.sizeMon : pos.side === "long" ? -pos.sizeMon : 0;
 }
 
+// ── trend gate ────────────────────────────────────────────────────────────────
+// 41h live on MON proved what the review predicted: two-sided quotes in a
+// persistent trend sell low and buy high on repeat (avg sell 12.4bps BELOW avg
+// buy across a +5.3% move, −$7.83 true PnL). The churn engine sits trends out via
+// TrendMonitor; the MM loop now does the same — both sides pulled, nothing clever.
+
+export type QuotingPlan = "rebalance" | "hold-paused" | "quote";
+
+/** Pure per-tick decision for the QUOTING state — exported for direct testing. */
+export function quotingPlan(
+  trendPaused: boolean,
+  invMon: number,
+  baseMon: number,
+  k: { invBandFrac: number; maxInvFrac: number },
+): QuotingPlan {
+  if (baseMon > 0 && Math.abs(invMon) > baseMon * k.maxInvFrac) return "rebalance";
+  // A trend is when stranded inventory bleeds fastest: while paused, rebalance as
+  // soon as the ordinary band is breached instead of waiting for the hard cap.
+  if (trendPaused && baseMon > 0 && Math.abs(invMon) > baseMon * k.invBandFrac) return "rebalance";
+  if (trendPaused) return "hold-paused";
+  return "quote";
+}
+
+/** One-shot flatten latch around the pause: quotes are pulled ONCE on entry, and
+ * the resume callback fires ONCE on exit. Exported for direct testing. */
+export class TrendGate {
+  private pulled = false;
+
+  async apply(
+    plan: QuotingPlan,
+    quoter: { flatten(exec: PerplExecutor): Promise<void> },
+    exec: PerplExecutor,
+    onPause?: () => void,
+    onResume?: () => void,
+  ): Promise<"skip" | "quote" | "rebalance"> {
+    if (plan === "rebalance") {
+      this.pulled = false; // re-entry to QUOTING re-evaluates from scratch
+      return "rebalance";
+    }
+    if (plan === "hold-paused") {
+      if (!this.pulled) {
+        await quoter.flatten(exec);
+        this.pulled = true;
+        onPause?.();
+      }
+      return "skip";
+    }
+    if (this.pulled) {
+      this.pulled = false;
+      onResume?.();
+    }
+    return "quote";
+  }
+}
+
 async function main(): Promise<void> {
   if (CFG.mode !== "mm") {
     console.error("run-mm.ts requires HEDGER_MODE=mm (this entrypoint never runs the hedge FSM)");
@@ -106,6 +161,7 @@ async function main(): Promise<void> {
   const pnl = new PnlLedger();
   const funding = new FundingMonitor(market);
   const trend = new TrendMonitor();
+  const trendGate = new TrendGate();
   const quoter = new MmQuoter({
     gamma: CFG.asGamma,
     kappa: CFG.asKappa,
@@ -295,6 +351,9 @@ async function main(): Promise<void> {
 
       const mid = (book.bids[0].px + book.asks[0].px) / 2;
       trend.update(mid, Date.now());
+      // Evaluated exactly once per tick (the monitor's hysteresis is stateful) so the
+      // status feed and the QUOTING gate always agree on the same verdict.
+      const trendPaused = trend.shouldPause(Date.now());
       const invMon = signedInvMon(exec.position());
       const baseMon = CFG.notionalUsd / mid;
 
@@ -320,13 +379,38 @@ async function main(): Promise<void> {
 
       switch (state) {
         case "QUOTING": {
-          if (Math.abs(invMon) > baseMon * CFG.mmMaxInvFrac) {
+          const plan = quotingPlan(trendPaused, invMon, baseMon, {
+            invBandFrac: CFG.mmInvBandFrac,
+            maxInvFrac: CFG.mmMaxInvFrac,
+          });
+          const action = await trendGate.apply(
+            plan,
+            quoter,
+            exec,
+            () => {
+              const msg = `trend pause: |move| ${trend.strengthPct().toFixed(2)}% over ${CFG.trendWindowMs / 1000}s — both quotes pulled`;
+              console.log(`[${new Date().toISOString()}] ${msg}`);
+              pushEvent("state", msg);
+            },
+            () => {
+              const msg = `trend resume: |move| ${trend.strengthPct().toFixed(2)}% — quoting again`;
+              console.log(`[${new Date().toISOString()}] ${msg}`);
+              pushEvent("state", msg);
+            },
+          );
+          if (action === "rebalance") {
             await quoter.flatten(exec);
             flattenStartedAt = 0;
-            transition("REBALANCING", `inventory ${invMon.toFixed(2)} MON beyond ±${(CFG.mmMaxInvFrac * 100).toFixed(0)}% of base`);
+            transition(
+              "REBALANCING",
+              trendPaused && Math.abs(invMon) <= baseMon * CFG.mmMaxInvFrac
+                ? `inventory ${invMon.toFixed(2)} MON stranded against a trend (band breach while paused)`
+                : `inventory ${invMon.toFixed(2)} MON beyond ±${(CFG.mmMaxInvFrac * 100).toFixed(0)}% of base`,
+            );
             break;
           }
-          await quoter.tick({ book, mid, invMon, baseMon, volFrac: trend.realizedVolFrac(), exec, market });
+          if (action === "quote")
+            await quoter.tick({ book, mid, invMon, baseMon, volFrac: trend.realizedVolFrac(), exec, market });
           break;
         }
 
@@ -399,9 +483,9 @@ async function main(): Promise<void> {
         fundingUsd: Number(pnl.fundingUsd.toFixed(4)),
         fundingAprPct: Number(funding.earnAprPct().toFixed(2)),
         fundingSignStatus: funding.signStatus,
-        churnIntensity: quoter.intensity,
+        churnIntensity: trendPaused && state === "QUOTING" ? "trend-paused" : quoter.intensity,
         trendStrengthPct: Number(trend.strengthPct().toFixed(3)),
-        trendPaused: false,
+        trendPaused,
         boostedVolumeUsd: Number((pnl.perpVolumeUsd * (market.pointsBoostBps / 10_000)).toFixed(2)),
         netCostUsd: Number((pnl.makerFeesUsd + pnl.takerFeesUsd - pnl.fundingUsd).toFixed(4)),
         spreadCaptureUsd: Number(pnl.spreadCaptureUsd.toFixed(4)),
