@@ -160,7 +160,12 @@ async function main(): Promise<void> {
 
   const pnl = new PnlLedger();
   const funding = new FundingMonitor(market);
-  const trend = new TrendMonitor();
+  // MM-specific trend window (long), NOT churn's 120s — see config.ts / trend.ts.
+  const trend = new TrendMonitor({
+    windowMs: CFG.mmTrendWindowMs,
+    pausePct: CFG.mmTrendPausePct,
+    resumePct: CFG.mmTrendResumePct,
+  });
   const trendGate = new TrendGate();
   const quoter = new MmQuoter({
     gamma: CFG.asGamma,
@@ -388,7 +393,7 @@ async function main(): Promise<void> {
             quoter,
             exec,
             () => {
-              const msg = `trend pause: |move| ${trend.strengthPct().toFixed(2)}% over ${CFG.trendWindowMs / 1000}s — both quotes pulled`;
+              const msg = `trend pause: |move| ${trend.strengthPct().toFixed(2)}% over ${Math.round(CFG.mmTrendWindowMs / 60000)}min — both quotes pulled`;
               console.log(`[${new Date().toISOString()}] ${msg}`);
               pushEvent("state", msg);
             },

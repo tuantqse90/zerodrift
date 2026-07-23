@@ -14,15 +14,36 @@ interface Sample {
   mid: number;
 }
 
+export interface TrendConfig {
+  windowMs: number;
+  pausePct: number;
+  resumePct: number;
+}
+
 export class TrendMonitor {
   private buf: Sample[] = [];
   private paused = false;
+
+  /** Churn passes nothing and inherits HEDGER_CONFIG. MM passes its OWN config: the
+   * churn window (120s) only catches fast spikes, but what bled the MM was a slow
+   * grind — +5.3% over 41h reached the churn threshold in only ~2.6% of 120s windows
+   * vs ~27% of 30-min windows (measured on the 2026-07-22 loss). Same math, right lens. */
+  constructor(private readonly cfg?: TrendConfig) {}
+  private win(): number {
+    return this.cfg?.windowMs ?? HEDGER_CONFIG.trendWindowMs;
+  }
+  private pauseAt(): number {
+    return this.cfg?.pausePct ?? HEDGER_CONFIG.trendPausePct;
+  }
+  private resumeAt(): number {
+    return this.cfg?.resumePct ?? HEDGER_CONFIG.trendResumePct;
+  }
 
   /** Feed the latest mid once per loop tick. */
   update(mid: number, nowMs: number): void {
     if (!(mid > 0)) return;
     this.buf.push({ t: nowMs, mid });
-    const cutoff = nowMs - HEDGER_CONFIG.trendWindowMs;
+    const cutoff = nowMs - this.win();
     while (this.buf.length > 2 && this.buf[0].t < cutoff) this.buf.shift();
   }
 
@@ -59,10 +80,10 @@ export class TrendMonitor {
    */
   shouldPause(nowMs: number): boolean {
     const span = this.buf.length >= 2 ? this.buf[this.buf.length - 1].t - this.buf[0].t : 0;
-    if (span < HEDGER_CONFIG.trendWindowMs * 0.6) return this.paused;
+    if (span < this.win() * 0.6) return this.paused;
     const s = this.strengthPct();
-    if (!this.paused && s > HEDGER_CONFIG.trendPausePct) this.paused = true;
-    else if (this.paused && s < HEDGER_CONFIG.trendResumePct) this.paused = false;
+    if (!this.paused && s > this.pauseAt()) this.paused = true;
+    else if (this.paused && s < this.resumeAt()) this.paused = false;
     return this.paused;
   }
 }

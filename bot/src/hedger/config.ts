@@ -57,6 +57,12 @@ export interface HedgerConfig {
   mmInvBandFrac: number;
   /** Force a maker rebalance toward flat beyond this fraction of baseMon. */
   mmMaxInvFrac: number;
+  // Trend gate for MM uses a LONGER window than churn: the churn 120s catches fast
+  // adverse spikes, but a slow directional grind (what actually bled the live MM) only
+  // shows up over tens of minutes. Measured on the 2026-07-22 loss.
+  mmTrendWindowMs: number;
+  mmTrendPausePct: number;
+  mmTrendResumePct: number;
   deltaSoftPct: number;
   deltaHardPct: number;
   /** +1: rate>0 ⇒ longs pay shorts (we earn on our short). Flip to -1 if proven inverted. */
@@ -140,6 +146,11 @@ export const HEDGER_CONFIG: HedgerConfig = {
   // for a few one-sided fills (≈5 clips) before the growing side gets pulled.
   mmInvBandFrac: envNum("HEDGER_MM_INV_BAND_FRAC", 0.15),
   mmMaxInvFrac: envNum("HEDGER_MM_MAX_INV_FRAC", 0.5),
+  // 30-min window, 0.6% pause / 0.3% resume: on the real loss this window crossed the
+  // pause line ~27% of the time vs ~2.6% for the churn 120s — the grind became visible.
+  mmTrendWindowMs: envNum("HEDGER_MM_TREND_WINDOW_MS", 1_800_000),
+  mmTrendPausePct: envNum("HEDGER_MM_TREND_PAUSE_PCT", 0.6),
+  mmTrendResumePct: envNum("HEDGER_MM_TREND_RESUME_PCT", 0.3),
   deltaSoftPct: envNum("HEDGER_DELTA_SOFT_PCT", 1),
   deltaHardPct: envNum("HEDGER_DELTA_HARD_PCT", 3),
   fundingSign: envNum("HEDGER_FUNDING_SIGN", 1) < 0 ? -1 : 1,

@@ -95,6 +95,7 @@ export class PnlLedger {
       week,
       intentId: f.intentId,
       oid: f.oid,
+      side: f.side, // persist direction — post-mortem PnL is unreconstructable without it
       px: f.px,
       sz: f.sz,
       notionalUsd,

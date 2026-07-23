@@ -90,3 +90,42 @@ do to deploy + go live — and does NOT do it.
 | ending inventory | short 2,044 MON into a +5.3% uptrend |
 | fees / funding | $0.41 / +$0.05 |
 | true PnL | **−$7.83** · feed netPnlUsd claimed +$2.87 (spreadCapture blindness) |
+
+## Validation round 1 — INCONCLUSIVE, and a design flaw found (2026-07-23)
+
+4-hour guard-on vs guard-off paper A/B on live MON (run on the VPS, not local, after
+two laptop-sleep interruptions):
+
+| leg   | fills | final equity | max drawdown | paused samples | max trend (120s) |
+|-------|-------|--------------|--------------|----------------|------------------|
+| G-on  | 9     | −$0.071      | −$0.278      | **0 / 120**    | 0.677%           |
+| G-off | 11    | −$0.066      | −$0.217      | 0 / 120        | 0.677%           |
+
+**Verdict: INCONCLUSIVE.** MON drifted <0.7% in any 120s window all 4 hours, below the
+1.0% pause line, so the guard never activated (0/120) and the two legs are noise-apart.
+The bar's own escape clause applies: never declare victory on a windless day.
+
+**But the run exposed the real problem.** Reconstructing the 120s-window trend strength
+over the actual 48.7h losing session (from midAtFill in the fills ledger — direction-
+independent, so trustworthy unlike a PnL replay):
+
+| window | max strength | % of windows over the 1.0% churn line |
+|--------|--------------|----------------------------------------|
+| 120s (churn default) | 2.865% | **2.6%** |
+| 30 min               | 4.608% | **27.1%** |
+
+The churn engine's 120s window is tuned for fast adverse spikes. What bled the MM was a
+slow grind — +2.2–5.3% over tens of hours — which barely registers over 120s. With the
+original guard the pause would have fired ~2.6% of the time: near-useless. A 30-min
+window sees the grind (27%).
+
+**Fix shipped:** MM now runs TrendMonitor on its own window (HEDGER_MM_TREND_WINDOW_MS
+default 30min, pause 0.6% / resume 0.3%) via a constructor override; churn's 120s is
+untouched. The fills ledger now persists `side` so a post-mortem PnL replay is possible
+next time (it was not — the direction had to be inferred and the inferred inventory came
+out −37,950 MON vs the real ~+2,500, so no PnL claim is made from this run).
+
+**Still not proven.** A longer window is data-motivated but unvalidated live: a windless
+market can't test it, and the current ledger can't backtest PnL. Next: re-run the A/B
+with the new MM defaults during a session that actually trends (pause samples > 2% in
+G-on), scored on equity + drawdown, before any human re-enables live.
